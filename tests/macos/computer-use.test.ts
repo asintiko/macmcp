@@ -313,6 +313,14 @@ describe.runIf(process.platform === 'darwin')('computer use on a real Mac', () =
 
     expect((await call('select_menu_item', { application: 'TextEdit', path: ['Edit', 'No Such Command'], screenshot: false })).text).toMatch(/^Error \[NOT_FOUND\]: No menu item "No Such Command" in "Edit"\. Available: /);
     expect((await call('select_menu_item', { application: 'TextEdit', path: ['Edit', 'Find'], screenshot: false })).text).toContain('is a submenu');
+
+    // An item that really is disabled is reported, and the menu that was opened to check is closed again.
+    await clickIntoDocument();
+    await act('press_key', { keys: 'cmd+z', repeat: 30 });
+    const redoable = await call('select_menu_item', { application: 'TextEdit', path: ['Edit', 'Undo'], screenshot: false });
+    expect(redoable.text).toBe('Error [FAILED]: The menu item "Edit > Undo" is disabled right now');
+    await act('type_text', { text: '!' });
+    await eventually('typing to work after the menu was closed', async () => (await focusedText()).endsWith('!'));
   }, 60_000);
 
   it('drags the window by its title bar', async () => {

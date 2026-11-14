@@ -471,10 +471,11 @@ func matchMenuItem(_ items: [AXUIElement], _ wanted: String) -> AXUIElement? {
 }
 
 /// Walk the menu bar along `path`; returns the item reached and the menu items below it.
-func descendMenu(_ app: NSRunningApplication, _ path: [String]) throws -> (item: AXUIElement?, children: [AXUIElement], titles: [String]) {
+func descendMenu(_ app: NSRunningApplication, _ path: [String]) throws -> (item: AXUIElement?, children: [AXUIElement], titles: [String], chain: [AXUIElement]) {
   var children = axChildren(try menuBar(of: app))
   var item: AXUIElement?
   var titles: [String] = []
+  var chain: [AXUIElement] = []
   for wanted in path {
     guard let match = matchMenuItem(children, wanted) else {
       let available = children.compactMap { axString($0, "AXTitle") }.filter { !$0.isEmpty }
@@ -483,9 +484,40 @@ func descendMenu(_ app: NSRunningApplication, _ path: [String]) throws -> (item:
     }
     titles.append(axString(match, "AXTitle") ?? wanted)
     item = match
+    chain.append(match)
     children = axChildren(match).first.map { axChildren($0) } ?? []
   }
-  return (item, children, titles)
+  return (item, children, titles, chain)
+}
+
+/// Open the menus that lead to an item, the way a user would, so that the application brings
+/// the state of their items up to date. Returns false if the menu did not open.
+func openMenus(_ parents: [AXUIElement]) -> Bool {
+  for parent in parents {
+    // Opening a menu can keep the application busy until it closes again; do not wait for that.
+    AXUIElementSetMessagingTimeout(parent, 1.0)
+    let status = AXUIElementPerformAction(parent, "AXPress" as CFString)
+    AXUIElementSetMessagingTimeout(parent, 0)
+    guard status == .success || status == .cannotComplete else { return false }
+    pump(0.25)
+  }
+  return true
+}
+
+func closeMenus(_ parents: [AXUIElement]) {
+  guard let barItem = parents.first else { return }
+  AXUIElementSetMessagingTimeout(barItem, 1.0)
+  AXUIElementPerformAction(barItem, "AXCancel" as CFString)
+  pump(0.15)
+  var attempts = 0
+  while axBool(barItem, "AXSelected") == true && attempts < parents.count + 1 {
+    // Still open: Escape closes one level at a time.
+    try? postKey(53, down: true, flags: CGEventFlags())
+    try? postKey(53, down: false, flags: CGEventFlags())
+    pump(0.15)
+    attempts += 1
+  }
+  AXUIElementSetMessagingTimeout(barItem, 0)
 }
 
 func targetApplication(_ params: JSON) throws -> NSRunningApplication {
@@ -512,11 +544,19 @@ func menuSelect(_ params: JSON) throws -> JSON {
   guard !path.isEmpty else { throw invalid("path must name at least one menu") }
   let located = try descendMenu(app, path)
   guard let item = located.item else { throw invalid("path must name at least one menu") }
-  if axBool(item, "AXEnabled") == false {
-    throw failed("The menu item \"\(located.titles.joined(separator: " > "))\" is disabled right now")
-  }
   if !located.children.isEmpty {
     throw invalid("\"\(located.titles.joined(separator: " > "))\" is a submenu; add the item to choose from it")
+  }
+  if axBool(item, "AXEnabled") == false {
+    // Applications update the state of menu items only when a menu opens, so "disabled" may be
+    // out of date. Open the menu like a user would and look again.
+    let parents = Array(located.chain.dropLast())
+    let opened = isFrontmost(app) && openMenus(parents)
+    if axBool(item, "AXEnabled") == false {
+      if opened { closeMenus(parents) }
+      let hint = isFrontmost(app) ? "" : " (the application is not frontmost, so this may be out of date: activate it and try again)"
+      throw failed("The menu item \"\(located.titles.joined(separator: " > "))\" is disabled right now\(hint)")
+    }
   }
   let status = AXUIElementPerformAction(item, "AXPress" as CFString)
   guard status == .success || status == .cannotComplete else {

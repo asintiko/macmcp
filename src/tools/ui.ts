@@ -318,7 +318,7 @@ export function uiTools(): AnyTool[] {
     desktop: true,
     description: [
       'Read the menu bar of an application without opening it: every menu and its items, with keyboard shortcuts, check marks, and which items are disabled right now. The fastest way to find out what an application can do and how a command is called.',
-      'With `path` it lists one menu or submenu, e.g. ["File", "Export"]. `depth` controls how many submenu levels are expanded.',
+      'With `path` it lists one menu or submenu, e.g. ["File", "Export"]. `depth` controls how many submenu levels are expanded. Applications refresh the disabled state only when a menu opens, so it can be out of date here; select_menu_item checks it properly.',
     ].join(' '),
     input: z.object({
       ...applicationParams,
