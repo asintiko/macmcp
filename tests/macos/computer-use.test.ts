@@ -76,6 +76,9 @@ describe.runIf(process.platform === 'darwin')('computer use on a real Mac', () =
     return listed.isError ? [] : (listed.data?.['windows'] as WindowInfo[]);
   };
 
+  /** The document window, or undefined while macOS does not list it (during a full-screen transition). */
+  const maybeWindow = async (): Promise<WindowInfo | undefined> => (await textEditWindows()).find((w) => w.window_id === windowId);
+
   const theWindow = async (): Promise<WindowInfo> => {
     const found = (await textEditWindows()).find((w) => w.window_id === windowId);
     if (!found) throw new Error(`Window ${windowId} is gone`);
@@ -525,12 +528,14 @@ describe.runIf(process.platform === 'darwin')('computer use on a real Mac', () =
     const screen = (await call('screenshot')).data?.['screen'] as { width: number; height: number };
 
     const entered = await act('set_window_state', { window_id: windowId, state: 'fullscreen' });
+    console.log(`[computer-use] full screen → ${entered.text}`);
     expect(entered.text).toMatch(/is now fullscreen\.$/);
+    expect(entered.data).toMatchObject({ window: { window_id: windowId, fullscreen: true } });
     const filling = await eventually(
       'the window to fill the screen',
       async () => {
-        const w = await theWindow();
-        return w.fullscreen && w.width >= screen.width - 2 ? w : undefined;
+        const w = await maybeWindow();
+        return w?.fullscreen && w.width >= screen.width - 2 ? w : undefined;
       },
       30_000,
     );
@@ -542,12 +547,13 @@ describe.runIf(process.platform === 'darwin')('computer use on a real Mac', () =
     await eventually('the text in the full-screen window', async () => (await focusedText()) === 'typed in full screen');
 
     const left = await act('set_window_state', { window_id: windowId, state: 'windowed' });
+    console.log(`[computer-use] windowed → ${left.text}`);
     expect(left.text).toMatch(/is now windowed\.$/);
     const back = await eventually(
       'the window to leave full screen',
       async () => {
-        const w = await theWindow();
-        return !w.fullscreen && w.on_screen && w.width < screen.width - 100 ? w : undefined;
+        const w = await maybeWindow();
+        return w && !w.fullscreen && w.on_screen && w.width < screen.width - 100 ? w : undefined;
       },
       30_000,
     );
@@ -784,12 +790,9 @@ describe.runIf(process.platform === 'darwin')('computer use on a real Mac', () =
       // The picture agrees: the window's colour is at those pixels and stops at its edges.
       const shot = await call('screenshot', { display: 2, format: 'png', show_cursor: false });
       const picture = decodePng(Buffer.from(shot.images[0]?.data ?? '', 'base64'));
-      expect(isMagenta(picture.pixel(centre.x, centre.y))).toBe(true);
-      expect(isMagenta(picture.pixel(305, 255))).toBe(true);
-      expect(isMagenta(picture.pixel(695, 485))).toBe(true);
-      expect(isMagenta(picture.pixel(294, 370))).toBe(false);
-      expect(isMagenta(picture.pixel(706, 370))).toBe(false);
-      expect(isMagenta(picture.pixel(500, 496))).toBe(false);
+      // (Checked at the middle of each edge: the corners of a window are rounded.)
+      for (const [x, y] of [[centre.x, centre.y], [304, 370], [696, 370], [500, 254], [500, 486]] as const) expect(isMagenta(picture.pixel(x, y)), `inside at (${x}, ${y})`).toBe(true);
+      for (const [x, y] of [[294, 370], [706, 370], [500, 496]] as const) expect(isMagenta(picture.pixel(x, y)), `outside at (${x}, ${y})`).toBe(false);
 
       // Interface elements are located in the same coordinates.
       const at = await call('get_ui_element_at', { ...centre, display: 2 });

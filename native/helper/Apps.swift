@@ -255,6 +255,17 @@ func setWindow(_ window: AXUIElement, _ attribute: String, _ value: CFTypeRef, w
   guard status == .success else { throw failed("The window could not be \(what) (accessibility error \(status.rawValue))") }
 }
 
+/// Entering and leaving full screen is animated, and the window is in neither state (nor in
+/// the list of windows) while that lasts: wait until it reports the state that was asked for.
+func awaitFullScreen(_ window: AXUIElement, _ wanted: Bool) {
+  let deadline = Date().addingTimeInterval(6.0)
+  while Date() < deadline {
+    if axBool(window, "AXFullScreen") == wanted { break }
+    pump(0.1)
+  }
+  pump(0.4)
+}
+
 func windowAction(_ params: JSON) throws -> JSON {
   let found = try findWindow(params)
   let window = found.window
@@ -283,8 +294,10 @@ func windowAction(_ params: JSON) throws -> JSON {
     try setWindow(window, "AXMinimized", kCFBooleanFalse, what: "restored")
   case "fullscreen":
     try setWindow(window, "AXFullScreen", kCFBooleanTrue, what: "made full screen")
+    awaitFullScreen(window, true)
   case "exit_fullscreen":
     try setWindow(window, "AXFullScreen", kCFBooleanFalse, what: "taken out of full screen")
+    awaitFullScreen(window, false)
   case "close":
     guard let button = axElement(window, "AXCloseButton") else { throw failed("This window has no close button") }
     let status = AXUIElementPerformAction(button, "AXPress" as CFString)

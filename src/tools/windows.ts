@@ -183,9 +183,16 @@ export function windowTools(): AnyTool[] {
       const actions = { minimized: 'minimize', restored: 'restore', fullscreen: 'fullscreen', windowed: 'exit_fullscreen' } as const;
       return desktop.exclusive(async () => {
         const info = await act(desktop, args.window_id, actions[args.state]);
-        // Full-screen transitions animate for about a second.
-        const settleMs = args.state === 'fullscreen' || args.state === 'windowed' ? 1500 : 700;
-        return finish(desktop, { screenshot: args.screenshot, settleMs, signal: ctx.signal }, `${windowLabel(info)} is now ${args.state === 'minimized' ? 'minimised' : args.state}.`, { window: info });
+        // Full-screen transitions animate for about a second; the helper waits for them to finish.
+        const settleMs = args.state === 'fullscreen' || args.state === 'windowed' ? 1000 : 700;
+        let text = `${windowLabel(info)} is now ${args.state === 'minimized' ? 'minimised' : args.state}.`;
+        // Not every window can go full screen (dialogs, panels), and macOS does not say no: report what the window says.
+        if (args.state === 'fullscreen' && !info.fullscreen) {
+          text = `${windowLabel(info)} did not go full screen. Windows such as dialogs and panels cannot; for others the change may still be under way — check list_windows.`;
+        } else if (args.state === 'windowed' && info.fullscreen) {
+          text = `${windowLabel(info)} is still full screen; the change may be under way — check list_windows.`;
+        }
+        return finish(desktop, { screenshot: args.screenshot, settleMs, signal: ctx.signal }, text, { window: info });
       });
     },
   });

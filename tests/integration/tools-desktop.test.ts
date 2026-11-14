@@ -514,8 +514,11 @@ describe('desktop tools on a fake Mac (Full System Access)', () => {
         if (params['action'] === 'close') return { closed: true, window_id: 4821 };
         if (params['action'] === 'move') return { ...raw, frame: { ...raw.frame, x: params['x'], y: params['y'] } };
         if (params['action'] === 'resize') return { ...raw, frame: { x: 225, y: 135, width: params['width'], height: params['height'] } };
+        if (params['action'] === 'fullscreen') return { ...raw, fullscreen: !refusesFullScreen };
+        if (params['action'] === 'exit_fullscreen') return { ...raw, fullscreen: false };
         return { ...raw, minimized: params['action'] === 'minimize' };
       };
+      let refusesFullScreen = false;
       expect((await h.call('focus_window', { window_id: 4821, screenshot: false })).text).toBe('Focused TextEdit — "notes.txt" (window 4821).');
 
       const moved = await h.call('set_window_bounds', { window_id: 4821, x: 200, y: 120, width: 1000, height: 700, screenshot: false });
@@ -531,9 +534,19 @@ describe('desktop tools on a fake Mac (Full System Access)', () => {
 
       expect((await h.call('set_window_state', { window_id: 4821, state: 'minimized', screenshot: false })).text).toBe('TextEdit — "notes.txt" (window 4821) is now minimised.');
       expect((await h.call('set_window_state', { window_id: 4821, state: 'restored', screenshot: false })).data).toMatchObject({ window: { minimized: false } });
+      const full = await h.call('set_window_state', { window_id: 4821, state: 'fullscreen', screenshot: false });
+      expect(full.text).toBe('TextEdit — "notes.txt" (window 4821) is now fullscreen.');
+      expect(full.data).toMatchObject({ window: { fullscreen: true } });
+      expect((await h.call('set_window_state', { window_id: 4821, state: 'windowed', screenshot: false })).text).toBe('TextEdit — "notes.txt" (window 4821) is now windowed.');
+      // macOS accepts the request for any window; what the window reports afterwards is what counts.
+      refusesFullScreen = true;
+      const refused = await h.call('set_window_state', { window_id: 4821, state: 'fullscreen', screenshot: false });
+      expect(refused.isError).toBe(false);
+      expect(refused.text).toBe('TextEdit — "notes.txt" (window 4821) did not go full screen. Windows such as dialogs and panels cannot; for others the change may still be under way — check list_windows.');
+
       expect((await h.call('close_window', { window_id: 4821, screenshot: false })).text).toBe('Pressed the close button of window 4821.');
       expect((await h.call('focus_window', { window_id: 1 })).text).toBe('Error [NOT_FOUND]: No window with id 1.');
-      expect(mac.sent('window_action').map((p) => p['action'])).toEqual(['focus', 'move', 'resize', 'minimize', 'restore', 'close', 'focus']);
+      expect(mac.sent('window_action').map((p) => p['action'])).toEqual(['focus', 'move', 'resize', 'minimize', 'restore', 'fullscreen', 'exit_fullscreen', 'fullscreen', 'close', 'focus']);
     });
   });
 
