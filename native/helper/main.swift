@@ -79,11 +79,14 @@ for (index, entry) in commands.enumerated() {
     let params = entry["params"] as? JSON ?? [:]
     results.append(try run(name, params))
   } catch let error as HelperError {
+    releaseHeld()
     emit(["ok": false, "index": index, "results": results, "error": ["code": error.code, "message": error.message]])
     exit(1)
   } catch {
+    releaseHeld()
     emit(["ok": false, "index": index, "results": results, "error": ["code": "FAILED", "message": "\(error)"]])
     exit(1)
   }
 }
+releaseHeld()
 emit(["ok": true, "results": results])

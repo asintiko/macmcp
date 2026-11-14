@@ -6,6 +6,7 @@ import { ngrokProvider, type TunnelProvider } from '../server/tunnel.js';
 import { createToolRegistry } from '../tools/index.js';
 import { NAME, VERSION } from '../version.js';
 import { type CliOptions, HELP, parseCli, UsageError } from './args.js';
+import { desktopChecks, prepareDesktop } from './desktop-setup.js';
 import { runDoctor } from './doctor.js';
 import { runLive } from './live.js';
 import { createTerminalPrompter, PromptCancelled, type Prompter } from './prompts.js';
@@ -88,7 +89,7 @@ export async function main(deps: MainDeps): Promise<number> {
     case 'config':
       return runConfig(options, ui, stateDir);
     case 'doctor':
-      return runDoctor({ ui, env, home: homedir(), platform, stateDir, offline: options.offline, tunnelProvider });
+      return runDoctor({ ui, env, home: homedir(), platform, stateDir, offline: options.offline, tunnelProvider, extraChecks: () => desktopChecks({ stateDir, platform, env }) });
     case 'start':
       break;
   }
@@ -111,6 +112,7 @@ export async function main(deps: MainDeps): Promise<number> {
       platform,
       stateDir,
       tunnelProvider,
+      afterConfigure: prepareDesktop,
     });
     await runLive(session, ui, { stdin });
     return 0;

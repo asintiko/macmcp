@@ -59,6 +59,17 @@ jobs:
       - name: Compile the desktop helper
         run: swiftc -swift-version 5 -module-name mcpclaude_helper -o "$RUNNER_TEMP/mcpclaude-helper" native/helper/*.swift
       - run: npm test
+        env:
+          # Screenshots of every Computer Use step, kept as a build artifact.
+          MCPCLAUDE_TEST_ARTIFACTS: ${{ runner.temp }}/computer-use
+      - name: Keep the Computer Use screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: computer-use-${{ matrix.os }}
+          path: ${{ runner.temp }}/computer-use
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Sandbox denials (diagnostics)
         if: failure()
         run: |

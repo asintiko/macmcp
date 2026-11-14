@@ -185,12 +185,18 @@ describe('mcpclaude doctor', () => {
     if (process.platform === 'darwin') {
       expect(text).toMatch(/✔ Operating system\s+macOS \d+/);
       expect(text).toMatch(/✔ Command sandbox\s+macOS Seatbelt profile loads/);
+      // The hosted runners have the Command Line Tools and grant both privacy permissions.
+      expect(text).toMatch(/✔ Xcode Command Line Tools\s+\//);
+      expect(text).toMatch(/✔ Desktop helper\s+compiled from source and cached/);
+      expect(text).toMatch(/✔ Accessibility\s+granted to .*: mouse, keyboard, windows and menus/);
+      expect(text).toMatch(/✔ Screen Recording\s+granted to .*: screenshots/);
     } else {
       expect(text).toMatch(/! Operating system\s+Linux/);
       expect(text).toMatch(/– Command sandbox\s+macOS only/);
+      expect(text).toMatch(/– Desktop control\s+macOS only/);
     }
     expect(text).toMatch(/No blocking problems, \d warnings?\./);
-  });
+  }, 300_000);
 
   const doctorDeps = (tunnel: FakeTunnelProvider, offline = false): Parameters<typeof collectChecks>[0] => ({
     ui: captureUi().ui,

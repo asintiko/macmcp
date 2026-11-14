@@ -53,6 +53,12 @@ export class FakeDesktopDriver implements DesktopDriver {
   captureError: ToolError | undefined;
   /** Artificial duration of each helper invocation. */
   delayMs = 0;
+  /** What happened, in order: "run:<commands>" and "capture". */
+  readonly events: string[] = [];
+  /** Make `prepare` fail (for example: no compiler). */
+  prepareError: ToolError | undefined;
+  /** Make `prepare` report that it has to build the helper first. */
+  needsBuild = false;
 
   constructor(displays: FakeDisplay[] = [RETINA]) {
     this.displays = displays;
@@ -99,6 +105,7 @@ export class FakeDesktopDriver implements DesktopDriver {
 
   async run(commands: HelperCommand[]): Promise<unknown[]> {
     this.invocations.push(commands);
+    this.events.push(`run:${commands.map((command) => command.command).join(',')}`);
     if (this.delayMs > 0) await new Promise((resolve) => setTimeout(resolve, this.delayMs));
     const results: unknown[] = [];
     for (const [index, command] of commands.entries()) {
@@ -120,6 +127,7 @@ export class FakeDesktopDriver implements DesktopDriver {
 
   async capture(options: CaptureOptions): Promise<Buffer> {
     this.captures.push(options);
+    this.events.push('capture');
     if (this.captureError) throw this.captureError;
     if (options.windowId !== undefined) return solidPng(1600, 1000);
     const display = this.displays.find((d) => d.index === (options.display ?? 1)) ?? (this.displays[0] as FakeDisplay);
@@ -145,5 +153,8 @@ export class FakeDesktopDriver implements DesktopDriver {
     return this.openResult(args);
   }
 
-  async prepare(): Promise<void> {}
+  async prepare(onSlow?: () => void): Promise<void> {
+    if (this.needsBuild) onSlow?.();
+    if (this.prepareError) throw this.prepareError;
+  }
 }

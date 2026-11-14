@@ -1,6 +1,7 @@
 import { createMcpHandler, type McpHttpHandler, McpServer, type ToolAnnotations } from '@modelcontextprotocol/server';
 import { MODE_LABEL } from '../core/permissions.js';
 import { LIMITS, type Runtime } from '../core/runtime.js';
+import { GUIDE_TOPICS } from '../tools/meta.js';
 import { type AnyTool, invokeTool, renderDescription, type ToolRegistry } from '../tools/registry.js';
 import { NAME, VERSION } from '../version.js';
 import { currentRequest } from './context.js';
@@ -18,7 +19,7 @@ export function serverInstructions(runtime: Runtime): string {
     lines.push(`Permission level: ${MODE_LABEL.full}. Project directory: ${runtime.projectDir}.`);
   }
   lines.push(
-    'Call server_info first. usage_guide(topic) explains workflows such as computer_use, after_effects, blender and file_transfer.',
+    `Call server_info first. usage_guide(topic) explains how to work with this server; topics: ${GUIDE_TOPICS.join(', ')}.`,
     'run_command returns a process_id instead of killing a command that is still running; poll it with read_process_output.',
     'Mouse coordinates are pixels of the most recent full screenshot. Take a screenshot before acting and after each step.',
   );

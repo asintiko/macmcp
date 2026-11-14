@@ -4,6 +4,13 @@ import Foundation
 
 let eventSource = CGEventSource(stateID: .hidSystemState)
 
+/// Keys and mouse buttons that this run pressed with key_down / mouse_down and has not released
+/// yet. Held modifiers are added to every event that follows, as with a real keyboard, and
+/// everything still held when the run ends is released (see releaseHeld).
+var heldKeys: [CGKeyCode] = []
+var heldFlags = CGEventFlags()
+var heldButtons: [MouseButtonKind] = []
+
 func eventFlags(_ names: [String]) throws -> CGEventFlags {
   var flags = CGEventFlags()
   for name in names {
@@ -48,7 +55,7 @@ func postMouse(_ type: CGEventType, at point: CGPoint, button: CGMouseButton, cl
   if clicks > 0 {
     event.setIntegerValueField(.mouseEventClickState, value: clicks)
   }
-  event.flags = flags
+  event.flags = flags.union(heldFlags)
   event.post(tap: .cghidEventTap)
 }
 
@@ -99,10 +106,12 @@ func mouseButtonState(_ params: JSON, down: Bool) throws -> JSON {
     try postMouse(.mouseMoved, at: point, button: kind.button)
     pause(30)
     try postMouse(kind.down, at: point, button: kind.button, clicks: 1, flags: flags)
+    heldButtons.append(kind)
   } else {
     try postMouse(kind.dragged, at: point, button: kind.button, clicks: 1, flags: flags)
     pause(30)
     try postMouse(kind.up, at: point, button: kind.button, clicks: 1, flags: flags)
+    heldButtons.removeAll { $0.button == kind.button }
   }
   pause(20)
   return cursorPosition()
@@ -156,7 +165,7 @@ func mouseScroll(_ params: JSON) throws -> JSON {
     guard let event = CGEvent(scrollWheelEvent2Source: eventSource, units: unit, wheelCount: 2, wheel1: stepY, wheel2: stepX, wheel3: 0) else {
       throw failed("Could not create a scroll event")
     }
-    event.flags = flags
+    event.flags = flags.union(heldFlags)
     event.post(tap: .cghidEventTap)
     remainingX -= stepX
     remainingY -= stepY
@@ -187,7 +196,7 @@ func postKey(_ code: CGKeyCode, down: Bool, flags: CGEventFlags) throws {
   guard let event = CGEvent(keyboardEventSource: eventSource, virtualKey: code, keyDown: down) else {
     throw failed("Could not create a keyboard event")
   }
-  event.flags = flags
+  event.flags = flags.union(heldFlags)
   event.post(tap: .cghidEventTap)
 }
 
@@ -371,10 +380,37 @@ func keyboardHold(_ params: JSON, down: Bool) throws -> JSON {
   guard let code = try resolveKey(params, flags: &flags) else {
     throw invalid("No key produces \"\(params.string("char") ?? "")\" on the current keyboard layout")
   }
-  for entry in modifierKeys where entry.code == code {
-    if down { flags.insert(entry.mask) } else { flags.remove(entry.mask) }
+  if let mask = modifierMask(code) {
+    if down { heldFlags.insert(mask) } else { heldFlags.remove(mask) }
   }
+  heldKeys.removeAll { $0 == code }
+  if down { heldKeys.append(code) }
   try postKey(code, down: down, flags: flags)
   pause(20)
   return ["code": Int(code)]
+}
+
+/// The event flag of a modifier key, or nil for any other key.
+func modifierMask(_ code: CGKeyCode) -> CGEventFlags? {
+  if code == 63 { return .maskSecondaryFn }
+  for entry in modifierKeys where entry.code == code { return entry.mask }
+  return nil
+}
+
+/// Release every key and mouse button that is still held, so that a sequence which fails half
+/// way, or forgets its key_up, cannot leave the Mac with a stuck Shift key or a drag in progress.
+func releaseHeld() {
+  if heldButtons.isEmpty && heldKeys.isEmpty { return }
+  let location = CGEvent(source: nil)?.location ?? CGPoint.zero
+  for kind in heldButtons.reversed() {
+    try? postMouse(kind.up, at: location, button: kind.button, clicks: 1)
+  }
+  heldButtons.removeAll()
+  for code in heldKeys.reversed() {
+    if let mask = modifierMask(code) { heldFlags.remove(mask) }
+    try? postKey(code, down: false, flags: CGEventFlags())
+    pause(8)
+  }
+  heldKeys.removeAll()
+  pause(20)
 }

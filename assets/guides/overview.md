@@ -18,6 +18,13 @@ user allowed it — see the screen and control mouse, keyboard and applications.
 3. Relative paths and commands use the working directory. Change it with
    `change_directory`.
 
+## Which guide to read next
+
+`usage_guide` has one topic per kind of work. Read the one that matches your task before
+starting multi-step work:
+
+- `computer-use` — screenshots, mouse, keyboard, applications, windows, menus and dialogs.
+
 ## Errors
 
 Failed calls return a line such as `Error [NOT_FOUND]: …` and often a `Hint:`. Codes are

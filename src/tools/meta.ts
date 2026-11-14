@@ -9,7 +9,7 @@ import { NAME, VERSION } from '../version.js';
 import { type AnyTool, defineTool, TOOL_GROUPS, type ToolGroup, type ToolRegistry } from './registry.js';
 
 /** Topics served by `usage_guide`; each has a file in assets/guides. */
-export const GUIDE_TOPICS = ['overview'] as const;
+export const GUIDE_TOPICS = ['overview', 'computer-use'] as const;
 
 export function metaTools(registry: () => ToolRegistry): AnyTool[] {
   const serverInfo = defineTool({
@@ -83,7 +83,7 @@ export function metaTools(registry: () => ToolRegistry): AnyTool[] {
     access: 'any',
     alwaysAvailable: true,
     description:
-      'Return a how-to guide for working with this server. Read "overview" once, then the topic that matches your task before starting multi-step work.',
+      'Return a how-to guide for working with this server. Read "overview" once, then the topic that matches your task before starting multi-step work: "computer-use" for screenshots, mouse, keyboard, windows and menus.',
     input: z.object({
       topic: z.enum(GUIDE_TOPICS).default('overview').describe('Which guide to return.'),
     }),

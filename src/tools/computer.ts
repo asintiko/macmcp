@@ -449,7 +449,7 @@ export function computerTools(): AnyTool[] {
     description: [
       'Carry out a sequence of mouse and keyboard actions in one call, without a round trip between them, and return one screenshot at the end. Use it when you already know every step: click a field, type, press Return; or a careful drag built from mouse_down, mouse_move and mouse_up.',
       'Each step has an `action` and the fields that action needs: click / double_click / right_click / mouse_move / mouse_down / mouse_up (x, y), drag (x, y, to_x, to_y), scroll (x, y, direction, amount), type_text (text), press_key / key_down / key_up (keys), wait (seconds).',
-      'The steps stop at the first one that fails; the error says which. Do not chain steps whose positions depend on how the screen changes.',
+      'The steps stop at the first one that fails; the error says which. Keys and buttons still held when the call ends are released. Do not chain steps whose positions depend on how the screen changes.',
     ].join(' '),
     input: z.object({
       actions: z
@@ -513,6 +513,7 @@ export function computerTools(): AnyTool[] {
         const summaries: string[] = [];
         let duration = 0;
         let held: 'left' | 'right' | 'middle' | undefined;
+        const heldKeys = new Set<string>();
         for (const [index, step] of args.actions.entries()) {
           let planned: Planned;
           try {
@@ -523,6 +524,12 @@ export function computerTools(): AnyTool[] {
           }
           if (step.action === 'mouse_down') held = step.button ?? 'left';
           if (step.action === 'mouse_up') held = undefined;
+          if (step.action === 'key_down' || step.action === 'key_up') {
+            for (const stroke of parseKeySequence(step.keys ?? '')) {
+              if (step.action === 'key_down') heldKeys.add(stroke.label);
+              else heldKeys.delete(stroke.label);
+            }
+          }
           for (const command of planned.commands) {
             commands.push(command);
             owner.push(index);
@@ -537,12 +544,16 @@ export function computerTools(): AnyTool[] {
         } catch (err) {
           if (err instanceof HelperFailure) {
             const failed = owner[err.index] ?? 0;
-            const done = failed === 0 ? 'No step was carried out before it.' : `Steps 1-${failed} were carried out.`;
+            const done = failed === 0 ? 'No step was carried out before it.' : failed === 1 ? 'Step 1 was carried out.' : `Steps 1-${failed} were carried out.`;
             throw new ToolError(err.code, `Step ${failed + 1} (${args.actions[failed]?.action}) failed: ${err.message} ${done}`, err.hint);
           }
           throw err;
         }
-        const text = summaries.map((summary, index) => `${index + 1}. ${summary}`).join('\n');
+        const lines = summaries.map((summary, index) => `${index + 1}. ${summary}`);
+        // The helper never leaves a key or button down when it exits.
+        const leftover = [...heldKeys, ...(held ? [`the ${held} mouse button`] : [])];
+        if (leftover.length > 0) lines.push(`Released at the end, because no step did: ${leftover.join(', ')}.`);
+        const text = lines.join('\n');
         return finish(desktop, { screenshot: args.screenshot, display: args.display, signal: ctx.signal }, text, { steps: summaries.length });
       });
     },
