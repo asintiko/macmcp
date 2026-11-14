@@ -67,6 +67,16 @@ export function outcome(result: unknown): CallOutcome {
   };
 }
 
+/** Connect the official MCP client to an endpoint URL. */
+export async function openClient(url: string, options: { headers?: Record<string, string>; era?: Era } = {}): Promise<Client> {
+  const client = new Client(
+    { name: 'harness', version: '1.0.0' },
+    { versionNegotiation: { mode: options.era === 'modern' ? { pin: MODERN_PROTOCOL } : 'legacy' } },
+  );
+  await client.connect(new StreamableHTTPClientTransport(new URL(url), { requestInit: { headers: options.headers ?? {} } }));
+  return client;
+}
+
 export async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'mcpclaude-test-')));
   const projectDir = path.join(root, 'project');
@@ -102,11 +112,7 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
     const url = connectOptions.viaPath && presented ? `${mcpUrl}/${presented}` : mcpUrl;
     const headers: Record<string, string> = {};
     if (!connectOptions.viaPath && presented && authMode === 'token') headers['Authorization'] = `Bearer ${presented}`;
-    const client = new Client(
-      { name: 'harness', version: '1.0.0' },
-      { versionNegotiation: { mode: connectOptions.era === 'modern' ? { pin: MODERN_PROTOCOL } : 'legacy' } },
-    );
-    await client.connect(new StreamableHTTPClientTransport(new URL(url), { requestInit: { headers } }));
+    const client = await openClient(url, { headers, ...(connectOptions.era ? { era: connectOptions.era } : {}) });
     clients.push(client);
     return client;
   };

@@ -126,8 +126,12 @@ describe.each<PermissionMode>(['full', 'project'])('shell tools (%s mode)', (mod
     const id = started.data?.['process_id'] as string;
     const closed = await h.call('write_process_input', { process_id: id, input: 'last line', close_stdin: true, wait_seconds: 5 });
     expect(closed.text).toContain('last line');
+    // The echo after cat may lag behind cat's own output: follow the process until it ends.
+    let followed = await h.call('read_process_output', { process_id: id, wait_seconds: 5 });
+    for (let i = 0; i < 10 && followed.data?.['status'] === 'running'; i++) followed = await h.call('read_process_output', { process_id: id, wait_seconds: 5 });
     const done = await h.call('read_process_output', { process_id: id, from_start: true, wait_seconds: 0 });
     expect(done.text).toContain('eof-seen');
+    expect(done.data).toMatchObject({ status: 'exited', exit_code: 0 });
   });
 
   if (mode === 'full') {

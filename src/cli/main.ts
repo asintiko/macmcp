@@ -1,10 +1,15 @@
 #!/usr/bin/env node
-import { NAME, VERSION } from '../version.js';
+import { main } from './app.js';
 
-// Placeholder entry point for milestone M0; the full CLI arrives in M3.
-const arg = process.argv[2];
-if (arg === '--version' || arg === '-v') {
-  console.log(VERSION);
-} else {
-  console.log(`${NAME} ${VERSION}`);
-}
+const argv = process.argv.slice(2);
+main({ argv }).then(
+  (code) => {
+    process.exitCode = code;
+    // The embedded tunnel agent can leave handles open; do not let them keep a finished command alive.
+    setTimeout(() => process.exit(code), 500).unref();
+  },
+  (err: unknown) => {
+    console.error(err);
+    process.exit(1);
+  },
+);

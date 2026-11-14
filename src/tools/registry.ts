@@ -1,5 +1,5 @@
 import type { CallToolResult, ServerContext } from '@modelcontextprotocol/server';
-import type * as z from 'zod';
+import * as z from 'zod';
 import { summarizeArgs } from '../core/audit.js';
 import { formatToolError, ToolError, toToolError } from '../core/errors.js';
 import { MODE_LABEL } from '../core/permissions.js';
@@ -102,6 +102,45 @@ export type AnyTool = ToolDefinition<any>;
 
 export function defineTool<Shape extends z.ZodRawShape>(definition: ToolDefinition<Shape>): AnyTool {
   return definition;
+}
+
+export interface JsonSchema {
+  type?: string;
+  description?: string;
+  enum?: unknown[];
+  default?: unknown;
+  minimum?: number;
+  maximum?: number;
+  items?: JsonSchema;
+  properties?: Record<string, JsonSchema>;
+  required?: string[];
+}
+
+const schemaCache = new WeakMap<AnyTool, JsonSchema>();
+
+/** JSON Schema of a tool's arguments as a client sends them: parameters with defaults are optional. */
+export function inputJsonSchema(tool: AnyTool): JsonSchema {
+  let schema = schemaCache.get(tool);
+  if (!schema) {
+    const raw = z.toJSONSchema(tool.input, { io: 'input' }) as JsonSchema & { $schema?: string; additionalProperties?: unknown };
+    delete raw.$schema;
+    delete raw.additionalProperties;
+    schema = raw;
+    schemaCache.set(tool, schema);
+  }
+  return schema;
+}
+
+/** The arguments worth showing in logs: values equal to the parameter's default are left out. */
+export function explicitArguments(tool: AnyTool, args: Record<string, unknown>): Record<string, unknown> {
+  const properties = inputJsonSchema(tool).properties ?? {};
+  const shown: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(args)) {
+    const fallback = properties[key]?.default;
+    if (fallback !== undefined && JSON.stringify(fallback) === JSON.stringify(value)) continue;
+    shown[key] = value;
+  }
+  return shown;
 }
 
 /** Description sent to MCP clients: usage notes, access note and one example call. */
@@ -225,7 +264,7 @@ export async function invokeTool(
   }
 
   const durationMs = Date.now() - started;
-  const summary = summarizeArgs(args);
+  const summary = summarizeArgs(explicitArguments(tool, args));
   const event = {
     tool: tool.name,
     args: summary,

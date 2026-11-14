@@ -3,6 +3,32 @@
 One entry per milestone, newest first. Each entry lists what was verified and how; the
 checkboxes in [PLAN.md](PLAN.md) are only ticked on the basis of these entries.
 
+## M2 — Shell, processes, files, transfer, system tools (2026-11-14)
+
+- Implemented 33 tools on top of the M1 framework (35 with the two meta tools): `run_command`,
+  `run_script`; `start_process`, `list_processes`, `read_process_output`,
+  `write_process_input`, `stop_process`, `list_system_processes`, `kill_process`; twelve file
+  tools; three navigation tools; six transfer tools (inline base64, one-time HTTP links on
+  the tunnel, URL download/upload); `system_info`, `get_environment`, `check_tools`.
+- Every tool is exercised by an integration test that drives a real HTTP server with the
+  official MCP client, in Full System Access and in Project-Only mode (path refusals, symlink
+  escapes, hidden tools).
+- Seatbelt sandbox: the first macOS CI run (43557433946) failed — Apple's own tools (`mktemp`,
+  `xcrun`, `sips`, the Swift compiler) ignore `TMPDIR` and write to the per-user Darwin temp
+  and cache directories, which the profile keeps closed because every application of the user
+  shares them. Fixed by pointing those tools at private sub-directories through
+  `DIRHELPER_USER_DIR_SUFFIX` (the mechanism macOS uses for sandboxed apps), confirmed first
+  with a probe run and then in the suite.
+- Verified in CI run 43558105166 (commit `052545d`): Linux Node 22 and 24, `macos-15` and
+  `macos-26` all green. On macOS 392 tests pass, including the 22 enforcement cases in
+  `tests/macos/sandbox.test.ts` that run real commands under the generated profile: reads
+  and writes outside the project are denied, symlinks do not escape, the project root cannot
+  be removed, other applications and outside processes cannot be driven or signalled, the
+  ssh agent and mcpclaude's own secrets are not exposed — while zsh/bash/sh, git, Node, npm
+  install, Python, the C and Swift compilers, DNS/TLS and localhost servers keep working.
+- Not a sandbox: on Linux (development only) Project-Only mode has path checks but no OS
+  confinement for commands; `server_info` and the startup output say so.
+
 ## M1 — Core server (2026-11-14)
 
 - Implemented: config store, auth gate, path policy, runtime, audit log, tool framework,

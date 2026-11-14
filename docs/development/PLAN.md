@@ -64,14 +64,14 @@ Constraints that shape the plan:
 
 | Done | Task | Verified by |
 |---|---|---|
-| [ ] | Execution engine and process manager (background processes, output cursors, stdin, stop) | unit + integration tests |
-| [ ] | Seatbelt sandbox profile for Project-Only mode | profile unit tests; enforcement tests on macOS CI |
-| [ ] | Shell tools: `run_command`, `run_script` | integration tests |
-| [ ] | Process tools: `start_process`, `list_processes`, `read_process_output`, `write_process_input`, `stop_process`, `list_system_processes`, `kill_process` | integration tests |
-| [ ] | File tools: read, write, edit, list, mkdir, move, copy, delete, info, search by name, search by content, view image | integration tests |
-| [ ] | Navigation tools: `get_working_directory`, `change_directory`, `project_overview` | integration tests |
-| [ ] | Transfer tools: inline upload/download, one-time HTTP links, URL download/upload | integration tests |
-| [ ] | System tools: `system_info`, `get_environment`, `check_tools` | integration tests |
+| [x] | Execution engine and process manager (background processes, output cursors, stdin, stop) | unit + integration tests |
+| [x] | Seatbelt sandbox profile for Project-Only mode | profile unit tests; 22 enforcement tests on macOS 15 and 26 runners |
+| [x] | Shell tools: `run_command`, `run_script` | integration tests (both modes; sandboxed on macOS CI) |
+| [x] | Process tools: `start_process`, `list_processes`, `read_process_output`, `write_process_input`, `stop_process`, `list_system_processes`, `kill_process` | integration tests |
+| [x] | File tools: read, write, edit, list, mkdir, move, copy, delete, info, search by name, search by content, view image | integration tests |
+| [x] | Navigation tools: `get_working_directory`, `change_directory`, `project_overview` | integration tests |
+| [x] | Transfer tools: inline upload/download, one-time HTTP links, URL download/upload | integration tests |
+| [x] | System tools: `system_info`, `get_environment`, `check_tools` | integration tests |
 
 ### M3 — CLI, wizard and tunnel
 

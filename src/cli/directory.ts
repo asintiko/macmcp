@@ -8,7 +8,11 @@ import type { Choice, Prompter } from './prompts.js';
 export type DirectoryCheck = { ok: true; path: string; warnings: string[] } | { ok: false; reason: string };
 
 /** Directories that are too broad or too sensitive to be a sensible project directory. */
-const BROAD_DIRECTORIES = ['/', '/Users', '/home', '/System', '/Library', '/Applications', '/usr', '/bin', '/sbin', '/etc', '/var', '/private', '/opt', '/Volumes', '/tmp'];
+const BROAD_DIRECTORIES = [
+  '/', '/Users', '/home', '/System', '/Library', '/Applications', '/usr', '/bin', '/sbin', '/etc', '/var', '/tmp', '/opt', '/Volumes',
+  // What /etc, /var and /tmp resolve to on macOS.
+  '/private', '/private/etc', '/private/var', '/private/tmp',
+];
 
 /**
  * Turn what a person typed or dragged into a terminal into an absolute path: trims, removes

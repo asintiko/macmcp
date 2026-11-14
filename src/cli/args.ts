@@ -41,52 +41,71 @@ export class UsageError extends Error {}
 
 export const DEFAULT_PORT = 7332;
 
+/** Lay out a comma-separated list in lines of at most `width` columns, indented by `indent`. */
+function wrapList(items: string[], indent: number, width: number): string {
+  const lines: string[] = [];
+  let line = '';
+  items.forEach((item, index) => {
+    const piece = index < items.length - 1 ? `${item},` : item;
+    if (line !== '' && indent + line.length + 1 + piece.length > width) {
+      lines.push(line);
+      line = '';
+    }
+    line = line === '' ? piece : `${line} ${piece}`;
+  });
+  if (line !== '') lines.push(line);
+  return lines.map((text) => ' '.repeat(indent) + text).join('\n');
+}
+
 export const HELP = `mcpclaude — MCP server that lets cloud AI agents work on this Mac
 
 Usage
-  mcpclaude [options]              Run the setup wizard and start the server
-  mcpclaude doctor                 Check dependencies, the tunnel and macOS permissions
-  mcpclaude tools [--format …]     List the MCP tools this server offers
-  mcpclaude config [--reset]       Show or clear saved settings
+  mcpclaude [options]         Run the setup wizard and start the server
+  mcpclaude doctor            Check dependencies, tunnel and macOS permissions
+  mcpclaude tools             List the MCP tools this server offers
+  mcpclaude config            Show or clear saved settings
 
 Setup (anything not given here is asked interactively)
-  -d, --dir <path>                 Project directory the agent works in
-  -m, --mode <project|full>        Permission level:
-                                     project  Project-Only Access: files and commands are
-                                              confined to the project directory
-                                     full     Full System Access: the whole Mac, including
-                                              applications and desktop control
-  -y, --yes                        Do not ask for confirmations
+  -d, --dir <path>            Project directory the agent works in
+  -m, --mode <project|full>   Permission level:
+                                project  Project-Only Access: files and commands
+                                         are confined to the project directory
+                                full     Full System Access: the whole Mac,
+                                         including apps and desktop control
+  -y, --yes                   Do not ask for confirmations
 
 Connection
-      --no-auth                    No authentication: anyone who knows the URL can connect
-      --token <token>              Use this access token instead of the saved one
-      --rotate-token               Generate a new access token (old URLs stop working)
-  -p, --port <number>              Local port (default ${DEFAULT_PORT}; a free port is used if taken)
-      --ngrok-authtoken <token>    ngrok authtoken (otherwise NGROK_AUTHTOKEN, saved settings
-                                   or your ngrok CLI configuration)
-      --ngrok-domain <domain>      Reserved or static ngrok domain to use
-      --no-tunnel                  Do not start ngrok (local use, or your own tunnel)
-      --public-url <url>           Public base URL when you run your own tunnel
+      --no-auth               No authentication: anyone who knows the URL can
+                              connect
+      --token <token>         Use this access token instead of the saved one
+      --rotate-token          Generate a new access token; old URLs stop working
+  -p, --port <number>         Local port (default ${DEFAULT_PORT}; a free one is used
+                              if it is taken)
+      --ngrok-authtoken <t>   ngrok authtoken (otherwise NGROK_AUTHTOKEN, saved
+                              settings or your ngrok CLI configuration)
+      --ngrok-domain <name>   Reserved or static ngrok domain to use
+      --no-tunnel             Do not start ngrok (local use, or your own tunnel)
+      --public-url <url>      Public base URL when you run your own tunnel
 
 Restrictions
-      --exclude-tools <groups>     Comma-separated tool groups to switch off
-                                   (${Object.keys(TOOL_GROUPS).filter((g) => g !== 'meta').join(', ')})
-      --allow-read <path>          Project-Only mode: extra directory commands may read (repeatable)
-      --allow-write <path>         Project-Only mode: extra directory commands may write (repeatable)
-      --unsafe-no-sandbox          Project-Only mode: run commands unconfined if the macOS
-                                   sandbox cannot be applied
+      --exclude-tools <list>  Comma-separated tool groups to switch off:
+${wrapList(Object.keys(TOOL_GROUPS).filter((g) => g !== 'meta'), 30, 80)}
+      --allow-read <path>     Project-Only: extra directory commands may read
+      --allow-write <path>    Project-Only: extra directory commands may write
+                              (both can be given several times)
+      --unsafe-no-sandbox     Project-Only: run commands unconfined if the macOS
+                              sandbox cannot be applied
 
 Other
-      --format <text|markdown|json>  Output format of "tools"
-      --output <file>              Write "tools" output to a file
-      --reset                      With "config": delete saved settings
-      --show-token                 With "config": print the access token in full
-      --offline                    With "doctor": skip checks that need the internet
-  -h, --help                       Show this help
-  -v, --version                    Show the version
+      --format <format>       With "tools": text (default), markdown or json
+      --output <file>         With "tools": write to a file
+      --reset                 With "config": delete saved settings
+      --show-token            With "config": print the access token in full
+      --offline               With "doctor": skip checks that need the internet
+  -h, --help                  Show this help
+  -v, --version               Show the version
 
-While the server runs:  p pause/resume   i show connection details   q quit
+While the server runs:  p pause/resume   i connection details   q quit
 Documentation: docs/README.md
 `;
 
