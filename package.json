@@ -1,0 +1,46 @@
+{
+  "name": "mcpclaude",
+  "version": "0.1.0",
+  "description": "MCP server that lets cloud AI agents work on a local Mac through an ngrok tunnel: shell, files, processes and full Computer Use.",
+  "private": true,
+  "license": "UNLICENSED",
+  "type": "module",
+  "bin": {
+    "mcpclaude": "dist/cli/main.js"
+  },
+  "files": [
+    "dist",
+    "native",
+    "assets",
+    "docs",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "os": [
+    "darwin",
+    "linux"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "docs:tools": "node dist/cli/main.js tools --format markdown --output docs/TOOLS.md",
+    "prepare": "npm run build"
+  },
+  "dependencies": {
+    "@inquirer/prompts": "^7.10.1",
+    "@modelcontextprotocol/node": "^2.1.2",
+    "@modelcontextprotocol/server": "^2.4.0",
+    "@ngrok/ngrok": "^1.8.0",
+    "zod": "^4.2.0"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "^2.4.0",
+    "@types/node": "^22.20.5",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  }
+}
