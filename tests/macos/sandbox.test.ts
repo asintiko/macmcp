@@ -66,11 +66,14 @@ describe.runIf(process.platform === 'darwin')('Seatbelt sandbox enforcement (mac
   });
 
   it('cannot read files outside the project', async () => {
-    for (const target of [path.join(outside, 'secret.txt'), homeSecret]) {
+    for (const [target, content] of [
+      [path.join(outside, 'secret.txt'), 'outside-secret'],
+      [homeSecret, 'home-secret'],
+    ] as const) {
       const result = await sh(`cat '${target}'`);
       expect(result.code).not.toBe(0);
       expect(result.out).toMatch(/Operation not permitted/i);
-      expect(result.out).not.toContain('secret');
+      expect(result.out).not.toContain(content);
     }
   });
 
@@ -102,10 +105,40 @@ describe.runIf(process.platform === 'darwin')('Seatbelt sandbox enforcement (mac
   });
 
   it('provides a private, writable temporary directory', async () => {
+    const scratch = path.join(root, 'state', 'sandbox', 'tmp');
     const result = await sh('f=$(mktemp) && echo tmp > "$f" && cat "$f" && rm "$f" && echo "$TMPDIR"');
     expect(result.code, result.out).toBe(0);
     expect(result.out).toContain('tmp\n');
-    expect(result.out).toContain(path.join(root, 'state', 'sandbox', 'tmp'));
+    expect(result.out).toContain(scratch);
+    // mktemp in its common spellings lands in the private directory, not the shared one.
+    for (const form of ['mktemp', 'mktemp -d', 'mktemp -t build', 'mktemp -dt build', 'mktemp -q', `mktemp "$TMPDIR/custom.XXXXXX"`]) {
+      const made = await sh(`p=$(${form}) && echo "$p" && rm -rf "$p"`);
+      expect(made.code, `${form}: ${made.out}`).toBe(0);
+      expect(made.out, form).toContain(scratch);
+    }
+  });
+
+  it('builds and runs native code', async () => {
+    const c = await sh(`printf '#include <stdio.h>\\nint main(void){puts("c-ok");return 0;}\\n' > hello.c && cc hello.c -o hello && ./hello`);
+    expect(c, c.out).toEqual({ code: 0, out: 'c-ok' });
+    const make = await sh(`printf 'all:\\n\\t@echo make-ok\\n' > Makefile && make`);
+    expect(make, make.out).toEqual({ code: 0, out: 'make-ok' });
+  });
+
+  it('runs the usual scripting and archive tools', async () => {
+    const result = await sh(
+      [
+        'ruby -e "puts 6*7"',
+        'perl -e "print 6*7, qq(\\n)"',
+        'echo hi > t.txt && tar czf t.tgz t.txt && tar tzf t.tgz',
+        'zip -q t.zip t.txt && unzip -l t.zip | grep -c t.txt',
+        'sed -i "" s/hi/ho/ t.txt && cat t.txt',
+        'find . -name "t.*" | sort | head -3 | wc -l | tr -d " "',
+        'awk "BEGIN{print 6*7}"',
+      ].join(' && '),
+    );
+    expect(result.code, result.out).toBe(0);
+    expect(result.out.split('\n')).toEqual(['42', '42', 't.txt', '1', 'ho', '3', '42']);
   });
 
   it('runs Node.js, confined like everything else', async () => {

@@ -195,6 +195,31 @@ const HOME_READ_FILES = ['.gitconfig', '.gitignore_global', '.config/git/config'
 /** PATH entries whose parent holds unrelated user data and must not be opened wholesale. */
 const MIXED_PARENTS = new Set(['.local', '.cargo', '.config', 'Library', 'go']);
 
+/**
+ * macOS `mktemp` puts files in the per-user temporary directory even when TMPDIR is set.
+ * That directory is shared with the user's other applications and stays closed inside the
+ * sandbox, so sandboxed commands get this stand-in first on PATH: it supplies an explicit
+ * template in $TMPDIR whenever the caller did not give one.
+ */
+const MKTEMP_SHIM = `#!/bin/sh
+real=/usr/bin/mktemp
+dir=\${TMPDIR%/}
+flags=""
+prefix=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -t) prefix=$2; shift 2 ;;
+    -*t) cluster=\${1%t}; [ "$cluster" != "-" ] && flags="$flags $cluster"; prefix=$2; shift 2 ;;
+    --) shift; break ;;
+    -*) flags="$flags $1"; shift ;;
+    *) break ;;
+  esac
+done
+if [ $# -gt 0 ]; then exec "$real" $flags "$@"; fi
+if [ -n "$prefix" ]; then exec "$real" $flags "$dir/$prefix.XXXXXXXX"; fi
+exec "$real" $flags "$dir/tmp.XXXXXXXXXX"
+`;
+
 async function realIfExists(target: string, kind: 'dir' | 'file'): Promise<string | undefined> {
   try {
     const real = await realpath(target);
@@ -264,6 +289,9 @@ export async function prepareSandbox(options: PrepareSandboxOptions): Promise<Pr
   await mkdir(cache, { recursive: true, mode: 0o700 });
   const npmrc = path.join(scratchRoot, 'npmrc');
   await writeFile(npmrc, '', { mode: 0o600 });
+  const bin = path.join(scratchRoot, 'bin');
+  await mkdir(bin, { mode: 0o700 });
+  await writeFile(path.join(bin, 'mktemp'), MKTEMP_SHIM, { mode: 0o755 });
   const scratchReal = await realpath(scratchRoot);
   const tmpReal = path.join(scratchReal, 'tmp');
   const cacheReal = path.join(scratchReal, 'cache');
@@ -286,6 +314,7 @@ export async function prepareSandbox(options: PrepareSandboxOptions): Promise<Pr
 
   const spec: SandboxSpec = { projectDir: options.projectDir, readWriteDirs, readOnlyDirs, readOnlyFiles };
   const env: Record<string, string> = {
+    PATH: [path.join(scratchReal, 'bin'), options.env['PATH'] ?? '/usr/bin:/bin:/usr/sbin:/sbin'].join(path.delimiter),
     TMPDIR: `${tmpReal}/`,
     XDG_CACHE_HOME: cacheReal,
     npm_config_cache: path.join(cacheReal, 'npm'),

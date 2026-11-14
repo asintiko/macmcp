@@ -206,6 +206,12 @@ export class ManagedProcess {
     return this.until('exit', () => this.status !== 'running', timeoutMs, signal);
   }
 
+  /** Run a callback once the process has exited, however long that takes. */
+  onExit(callback: () => void): void {
+    if (this.status !== 'running') callback();
+    else this.emitter.once('exit', callback);
+  }
+
   /** Resolves when there is output beyond `offset`, the process exits, or time runs out. */
   async waitForActivity(offset: number, timeoutMs: number, signal?: AbortSignal): Promise<void> {
     await this.until('activity', () => this.output.length > offset || this.status !== 'running', timeoutMs, signal);

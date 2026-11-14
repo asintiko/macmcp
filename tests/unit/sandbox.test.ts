@@ -1,7 +1,8 @@
-import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { runProgram } from '../../src/core/exec.js';
 import { buildSeatbeltProfile, detectToolchainDirs, prepareSandbox, sandboxArgv, SANDBOX_EXEC } from '../../src/core/sandbox.js';
 
 describe('Seatbelt profile', () => {
@@ -131,9 +132,33 @@ describe('toolchain detection', () => {
     expect(prepared.spec.readWriteDirs).toEqual([path.join(stateDir, 'sandbox')]);
     expect(prepared.spec.readOnlyFiles).toEqual([path.join(home, '.gitconfig')]);
     expect(prepared.env['TMPDIR']).toBe(`${path.join(stateDir, 'sandbox', 'tmp')}/`);
+    expect(prepared.env['PATH']).toBe(`${path.join(stateDir, 'sandbox', 'bin')}:/usr/bin`);
     expect(prepared.env['npm_config_cache']).toBe(path.join(stateDir, 'sandbox', 'cache', 'npm'));
     expect(prepared.env['GIT_CEILING_DIRECTORIES']).toBe(home);
     expect(prepared.unsetEnv).toContain('SSH_AUTH_SOCK');
     expect(prepared.profile.defines[0]).toBe(`-DPROJECT=${project}`);
+  });
+
+  it('ships an mktemp stand-in that keeps temporary files in TMPDIR', async () => {
+    const stateDir = path.join(home, '.mcpclaude');
+    const prepared = await prepareSandbox({ projectDir: path.join(home, 'tools'), stateDir, home, env: { PATH: '/usr/bin:/bin' } });
+    const tmp = (prepared.env['TMPDIR'] as string).replace(/\/$/, '');
+    const shim = path.join(stateDir, 'sandbox', 'bin', 'mktemp');
+    const cases: [string[], RegExp][] = [
+      [[], /\/tmp\.[A-Za-z0-9]{10}$/],
+      [['-d'], /\/tmp\.[A-Za-z0-9]{10}$/],
+      [['-t', 'build'], /\/build\.[A-Za-z0-9]{8}$/],
+      [['-dt', 'build'], /\/build\.[A-Za-z0-9]{8}$/],
+      [['-q'], /\/tmp\.[A-Za-z0-9]{10}$/],
+      [[`${tmp}/custom.XXXXXX`], /\/custom\.[A-Za-z0-9]{6}$/],
+    ];
+    for (const [args, shape] of cases) {
+      const result = await runProgram(shim, args, { env: { PATH: '/usr/bin:/bin', TMPDIR: `${tmp}/` } });
+      const created = result.stdout.trim();
+      expect(result.code, `mktemp ${args.join(' ')}: ${result.stderr}`).toBe(0);
+      expect(path.dirname(created)).toBe(tmp);
+      expect(created).toMatch(shape);
+      expect((await stat(created)).isDirectory()).toBe(args.some((a) => /^-[a-z]*d/.test(a)));
+    }
   });
 });
