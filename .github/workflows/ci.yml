@@ -49,3 +49,16 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm test
+
+  # Temporary: reports which desktop capabilities hosted macOS runners provide.
+  macos-probe:
+    name: macOS capability probe (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-26, macos-15]
+    steps:
+      - uses: actions/checkout@v7
+      - run: bash scripts/ci/macos-probe.sh

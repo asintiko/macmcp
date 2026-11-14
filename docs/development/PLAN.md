@@ -45,8 +45,8 @@ Constraints that shape the plan:
 |---|---|---|
 | [x] | Requirements analysis, architecture, technical decisions, plan written | docs reviewed against the brief |
 | [x] | Repository scaffold: `package.json`, TypeScript, Vitest, `.gitignore` | `npm run typecheck && npm test && npm run build` |
-| [ ] | CI workflow (Linux + macOS) | green run on GitHub Actions |
-| [ ] | First commit pushed to GitHub | `git ls-remote` shows the branch |
+| [x] | CI workflow (Linux + macOS) | green run on GitHub Actions |
+| [x] | First commit pushed to GitHub | `git ls-remote` shows the branch |
 
 ### M1 — Core server
 
