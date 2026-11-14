@@ -27,6 +27,9 @@ interface RawElement {
   application?: string;
   pid?: number;
   note?: string;
+  orientation?: 'vertical' | 'horizontal';
+  /** The action made the element disappear (a button that closed its dialog). */
+  gone?: boolean;
 }
 
 export interface ElementInfo {
@@ -46,6 +49,9 @@ export interface ElementInfo {
   help?: string;
   identifier?: string;
   selected?: boolean;
+  /** What kind of element it is within its role, e.g. "CloseButton", when it has no label. */
+  subrole?: string;
+  orientation?: 'vertical' | 'horizontal';
 }
 
 const roleName = (role: string): string => role.replace(/^AX/, '');
@@ -69,6 +75,8 @@ async function describeElement(desktop: Desktop, raw: RawElement): Promise<Eleme
   if (raw.help) info.help = raw.help;
   if (raw.identifier) info.identifier = raw.identifier;
   if (raw.selected) info.selected = true;
+  if (raw.subrole && info.label === null) info.subrole = roleName(raw.subrole);
+  if (raw.orientation) info.orientation = raw.orientation;
   return info;
 }
 
@@ -76,6 +84,8 @@ async function describeElement(desktop: Desktop, raw: RawElement): Promise<Eleme
 function elementLine(info: ElementInfo): string {
   const parts = [info.role];
   if (info.label) parts.push(JSON.stringify(info.label));
+  else if (info.subrole) parts.push(`(${info.subrole})`);
+  if (info.orientation) parts.push(info.orientation);
   if (info.value !== null && info.value !== '') parts.push(`value=${typeof info.value === 'string' ? JSON.stringify(info.value) : info.value}`);
   if (!info.enabled) parts.push('[disabled]');
   if (info.focused) parts.push('[focused]');
@@ -294,6 +304,7 @@ export function uiTools(): AnyTool[] {
         const info = await describeElement(desktop, raw);
         const lines = [`${done} ${elementLine({ ...info, depth: 0 })}`];
         if (raw.note) lines.push(raw.note);
+        if (raw.gone) lines.push('The element is no longer part of the interface: the action closed or replaced it.');
         return finish(desktop, { screenshot: args.screenshot, display: info.display ?? undefined, signal: ctx.signal }, lines.join('\n'), { element: info });
       });
     },

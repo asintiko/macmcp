@@ -580,15 +580,19 @@ describe('desktop tools on a fake Mac (Full System Access)', () => {
           { id: '512:0:AXWindow', role: 'AXWindow', title: 'Render', depth: 0, children: 2 },
           { ...field, depth: 1 },
           { ...button, depth: 2 },
+          { id: '512:0.1:AXButton', role: 'AXButton', subrole: 'AXCloseButton', depth: 1 },
+          { id: '512:0.4:AXScrollBar', role: 'AXScrollBar', orientation: 'vertical', value: 0.25, depth: 1 },
         ],
       });
       const tree = await h.call('get_ui_tree', { window_id: 4821, max_depth: 3, include_containers: true });
       expect(mac.sent('ui_tree')).toEqual([{ window_id: 4821, max_depth: 3, max_elements: 250, compact: false }]);
       expect(tree.text.split('\n')).toEqual([
-        'Interface of After Effects (3 elements):',
+        'Interface of After Effects (5 elements):',
         'Window "Render" id=512:0:AXWindow',
         '  TextField "Name" value="Comp 1" [focused] @(100, 10) id=512:0.2.0:AXTextField',
         '    Button "Export" @(440, 312) id=512:0.3.1:AXButton',
+        '  Button (CloseButton) id=512:0.1:AXButton',
+        '  ScrollBar vertical value=0.25 id=512:0.4:AXScrollBar',
         '… truncated: raise max_depth or max_elements, or look at a single window.',
       ]);
     });
@@ -610,10 +614,15 @@ describe('desktop tools on a fake Mac (Full System Access)', () => {
       mac.handlers['ui_action'] = (params) => {
         if (params['id'] === 'gone:1:AXButton') throw new ToolError('NOT_FOUND', 'The interface has changed: element gone:1:AXButton no longer exists. Look it up again.');
         const base = String(params['id']).endsWith('AXButton') ? button : String(params['id']).endsWith('AXSlider') ? { id: params['id'], role: 'AXSlider', value: params['value'] } : { ...field, value: params['value'] ?? field.value };
-        return { ...base, id: params['id'], ...(params['action'] === 'press' ? { note: 'The application did not confirm the action in time; it has most likely happened.' } : {}) };
+        return { ...base, id: params['id'], ...(params['action'] === 'press' ? { note: 'The application did not confirm the action in time; it has most likely happened.' } : {}), ...(params['action'] === 'cancel' ? { gone: true, frame: undefined } : {}) };
       };
       const pressed = await h.call('perform_ui_action', { element_id: button.id, screenshot: false });
       expect(pressed.text).toBe('Pressed Button "Export" @(440, 312) id=512:0.3.1:AXButton\nThe application did not confirm the action in time; it has most likely happened.');
+
+      const closed = await h.call('perform_ui_action', { element_id: button.id, action: 'cancel', screenshot: false });
+      expect(closed.text).toBe('Cancelled Button "Export" id=512:0.3.1:AXButton\nThe element is no longer part of the interface: the action closed or replaced it.');
+      mac.commands.length = 0;
+      await h.call('perform_ui_action', { element_id: button.id, screenshot: false });
 
       const filled = await h.call('perform_ui_action', { element_id: field.id, action: 'set_value', value: 'Comp 2', screenshot: false });
       expect(filled.text).toBe('Set the value of TextField "Name" value="Comp 2" [focused] @(100, 10) id=512:0.2.0:AXTextField');

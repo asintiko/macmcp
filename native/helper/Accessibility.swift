@@ -74,7 +74,7 @@ func applicationElement(_ pid: pid_t) -> AXUIElement {
 
 let describedAttributes = [
   "AXRole", "AXSubrole", "AXTitle", "AXDescription", "AXValue", "AXEnabled", "AXFocused", "AXPosition", "AXSize",
-  "AXIdentifier", "AXHelp", "AXPlaceholderValue", "AXSelected", "AXChildren",
+  "AXIdentifier", "AXHelp", "AXPlaceholderValue", "AXSelected", "AXChildren", "AXOrientation",
 ]
 
 /// Containers that carry no information of their own; left out of compact listings.
@@ -144,6 +144,10 @@ func snapshot(_ element: AXUIElement, id: String, valueLimit: Int) -> ElementSna
     search.append(placeholder)
   }
   if let selected = (values[12] as? NSNumber)?.boolValue, selected { info["selected"] = true }
+  if let orientation = values[14] as? String {
+    if orientation == "AXVerticalOrientation" { info["orientation"] = "vertical" }
+    if orientation == "AXHorizontalOrientation" { info["orientation"] = "horizontal" }
+  }
   let children = (values[13] as? [AXUIElement]) ?? []
   return ElementSnapshot(info: info, role: role, children: children, searchText: search.joined(separator: "\n").lowercased(), labelled: labelled)
 }
@@ -377,6 +381,7 @@ func uiAction(_ params: JSON) throws -> JSON {
     throw failed("Setting \(attribute) failed (accessibility error \(status.rawValue))")
   }
 
+  let before = snapshot(element, id: elementID(target.pid, []), valueLimit: 400).info
   switch action {
   case "describe": break
   case "press": try perform("AXPress")
@@ -403,6 +408,12 @@ func uiAction(_ params: JSON) throws -> JSON {
   }
   pause(60)
   var result = snapshot(element, id: elementID(target.pid, []), valueLimit: 400).info
+  if (result["role"] as? String) == "AXUnknown" && (before["role"] as? String) != "AXUnknown" {
+    // The action removed the element (a button that closes its dialog): describe it as it was.
+    result = before
+    result.removeValue(forKey: "frame")
+    result["gone"] = true
+  }
   result["id"] = try params.requireString("id")
   if let message = note { result["note"] = message }
   return result

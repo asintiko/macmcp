@@ -266,6 +266,9 @@ describe.runIf(process.platform === 'darwin')('computer use on a real Mac', () =
     expect(tree.isError, tree.text).toBe(false);
     expect(tree.text).toMatch(/^Interface of TextEdit \(\d+ elements\):\nWindow "mcpclaude-note/);
     expect(tree.text).toMatch(/\n\s+TextArea[^\n]*value="Set through accessibility"/);
+    // Unlabelled controls are named by what they are.
+    expect(tree.text).toMatch(/\n\s+Button \(CloseButton\) @\(\d+, \d+\)/);
+    expect(tree.text).toMatch(/\n\s+ScrollBar vertical /);
 
     const byText = await call('find_ui_elements', { text: 'through ACCESS', application: 'TextEdit' });
     expect((byText.data?.['elements'] as ElementInfo[]).map((element) => element.role)).toContain('TextArea');
@@ -279,6 +282,7 @@ describe.runIf(process.platform === 'darwin')('computer use on a real Mac', () =
     });
     const pressed = await act('perform_ui_action', { element_id: done.element_id, action: 'press' });
     expect(pressed.text).toMatch(/^Pressed Button "Done"/);
+    expect(pressed.text).toContain('The element is no longer part of the interface');
     await eventually('the find bar to close', async () => {
       const found = await call('find_ui_elements', { text: 'Done', role: 'Button', window_id: windowId });
       return (found.data?.['elements'] as ElementInfo[] | undefined)?.length === 0;
@@ -332,7 +336,7 @@ describe.runIf(process.platform === 'darwin')('computer use on a real Mac', () =
     const area = await setDocument(Array.from({ length: 400 }, (_, index) => `line ${index + 1}`).join('\n'));
     const scrollBar = async (): Promise<number | undefined> => {
       const found = await call('find_ui_elements', { role: 'ScrollBar', window_id: windowId });
-      const value = (found.data?.['elements'] as ElementInfo[] | undefined)?.[0]?.value;
+      const value = (found.data?.['elements'] as (ElementInfo & { orientation?: string })[] | undefined)?.find((bar) => bar.orientation === 'vertical')?.value;
       return typeof value === 'number' ? value : undefined;
     };
     const centre = area.center ?? { x: 380, y: 300 };
