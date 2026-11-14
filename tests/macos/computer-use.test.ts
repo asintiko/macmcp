@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { readImageInfo } from '../../src/core/image.js';
 import { realBlender } from '../helpers/blender.js';
 import { type CallOutcome, createHarness, type Harness } from '../helpers/harness.js';
+import { buildClickRecorder, ClickRecorder } from '../helpers/native.js';
 import { decodePng } from '../helpers/png.js';
 
 /**
@@ -26,6 +27,7 @@ interface WindowInfo {
   height: number;
   minimized: boolean;
   focused: boolean;
+  fullscreen: boolean;
   on_screen: boolean;
 }
 
@@ -43,6 +45,7 @@ describe.runIf(process.platform === 'darwin')('computer use on a real Mac', () =
   let note: string;
   let windowId = 0;
   let step = 0;
+  let recorderBinary = '';
 
   const call = async (name: string, args: Record<string, unknown> = {}): Promise<CallOutcome> => {
     const outcome = await h.call(name, args);
@@ -118,8 +121,9 @@ describe.runIf(process.platform === 'darwin')('computer use on a real Mac', () =
       ].join(' && '),
     });
     expect(prepared.text, prepared.text).toMatch(/^Exit code 0/);
-    // Compile the helper outside the timed steps.
+    // Compile the helper and the click recorder outside the timed steps.
     await h.runtime.desktop?.driver.prepare();
+    recorderBinary = await buildClickRecorder(path.join(h.root, 'click-recorder'));
   }, 600_000);
 
   afterEach(async (context) => {
@@ -400,6 +404,90 @@ describe.runIf(process.platform === 'darwin')('computer use on a real Mac', () =
     await eventually('the line replaced after a triple-click', async () => (await focusedText()) === 'one line');
   }, 90_000);
 
+  it('opens a context menu with the right button and chooses from it', async () => {
+    await act('focus_window', { window_id: windowId });
+    await setDocument('');
+    await clickIntoDocument();
+    await act('set_clipboard', { text: 'pasted from the context menu' });
+    const w = await theWindow();
+    await act('click', { x: Math.round(w.x + w.width / 2), y: Math.round(w.y + w.height * 0.6), button: 'right' });
+    // The menu that opens is part of the window's interface: its items can be found and clicked.
+    const paste = await eventually('the Paste item of the context menu', async () => {
+      const found = await call('find_ui_elements', { role: 'MenuItem', text: 'Paste', window_id: windowId });
+      return (found.data?.['elements'] as ElementInfo[] | undefined)?.find((item) => item.label === 'Paste' && item.center !== null);
+    });
+    await act('click', paste.center ?? {});
+    await eventually('the text pasted through the context menu', async () => (await focusedText()) === 'pasted from the context menu');
+    await eventually('the context menu to be gone', async () => {
+      const found = await call('find_ui_elements', { role: 'MenuItem', text: 'Paste', window_id: windowId });
+      return (found.data?.['elements'] as ElementInfo[] | undefined)?.length === 0;
+    });
+  }, 60_000);
+
+  it('delivers right, middle, double and modified clicks to an application', async () => {
+    // A window that writes down every mouse event macOS hands it.
+    const recorder = await ClickRecorder.start(recorderBinary, path.join(h.root, 'clicks.jsonl'), { x: 620, y: 420, width: 320, height: 220 });
+    try {
+      const window = await eventually('the recorder window', async () => ((await call('list_windows', { pid: recorder.pid })).data?.['windows'] as WindowInfo[] | undefined)?.find((w) => w.width > 100));
+      // The middle of the content area, worked out from what list_windows says about the window.
+      const contentHeight = recorder.content.height * (window.width / recorder.content.width);
+      const target = { x: Math.round(window.x + window.width / 2), y: Math.round(window.y + window.height - contentHeight / 2) };
+      const expected = { x: recorder.content.x + recorder.content.width / 2, y: recorder.content.y + recorder.content.height / 2 };
+
+      expect((await act('click', { ...target, button: 'right' })).text).toBe(`Clicked the right button at (${target.x}, ${target.y}).`);
+      expect((await act('click', { ...target, button: 'middle' })).text).toBe(`Clicked the middle button at (${target.x}, ${target.y}).`);
+      await act('click', { ...target, count: 2 });
+      await act('click', { ...target, modifiers: ['shift', 'alt'] });
+      await act('click', { ...target, button: 'right', modifiers: ['cmd'] });
+
+      const events = await eventually('the clicks to arrive', async () => {
+        const seen = await recorder.events();
+        return seen.length >= 12 ? seen : undefined;
+      });
+      console.log(`[computer-use] recorded ${JSON.stringify(events)}`);
+      expect(events.map((event) => `${event.kind} button=${event.button} clicks=${event.clicks} ${event.modifiers.join('+')}`.trim())).toEqual([
+        'down button=1 clicks=1',
+        'up button=1 clicks=1',
+        'down button=2 clicks=1',
+        'up button=2 clicks=1',
+        'down button=0 clicks=1',
+        'up button=0 clicks=1',
+        'down button=0 clicks=2',
+        'up button=0 clicks=2',
+        'down button=0 clicks=1 shift+alt',
+        'up button=0 clicks=1 shift+alt',
+        'down button=1 clicks=1 cmd',
+        'up button=1 clicks=1 cmd',
+      ]);
+      // Every event arrived where it was aimed, in the application's own coordinates.
+      for (const event of events) {
+        expect(Math.abs(event.x - expected.x), JSON.stringify(event)).toBeLessThanOrEqual(2);
+        expect(Math.abs(event.y - expected.y), JSON.stringify(event)).toBeLessThanOrEqual(2);
+      }
+
+      // The same buttons inside a batch, held and released as separate steps.
+      await recorder.forget();
+      const batch = await call('computer_actions', {
+        screenshot: false,
+        actions: [
+          { action: 'mouse_down', ...target, button: 'middle' },
+          { action: 'mouse_up', ...target, button: 'middle' },
+          { action: 'click', ...target, button: 'right' },
+        ],
+      });
+      expect(batch.isError, batch.text).toBe(false);
+      const batched = await eventually('the batched clicks to arrive', async () => {
+        const seen = await recorder.events();
+        return seen.length >= 4 ? seen : undefined;
+      });
+      expect(batched.map((event) => `${event.kind} ${event.button}`)).toEqual(['down 2', 'up 2', 'down 1', 'up 1']);
+    } finally {
+      await recorder.stop();
+    }
+    // Keyboard focus goes back to the document for the steps that follow.
+    await act('focus_window', { window_id: windowId });
+  }, 90_000);
+
   it('captures a single window', async () => {
     const shot = await call('screenshot', { window_id: windowId, format: 'png' });
     expect(shot.isError, shot.text).toBe(false);
@@ -429,6 +517,43 @@ describe.runIf(process.platform === 'darwin')('computer use on a real Mac', () =
       return !w.minimized && w.focused;
     });
   }, 60_000);
+
+  it('makes the window full screen and back', async () => {
+    await act('set_window_bounds', { window_id: windowId, x: 80, y: 100, width: 600, height: 400 });
+    const before = await theWindow();
+    expect(before.fullscreen).toBe(false);
+    const screen = (await call('screenshot')).data?.['screen'] as { width: number; height: number };
+
+    const entered = await act('set_window_state', { window_id: windowId, state: 'fullscreen' });
+    expect(entered.text).toMatch(/is now fullscreen\.$/);
+    const filling = await eventually(
+      'the window to fill the screen',
+      async () => {
+        const w = await theWindow();
+        return w.fullscreen && w.width >= screen.width - 2 ? w : undefined;
+      },
+      30_000,
+    );
+    expect(filling).toMatchObject({ x: 0, width: screen.width, minimized: false });
+    expect(filling.height).toBeGreaterThan(screen.height - 60);
+    expect((await call('list_windows', { application: 'TextEdit' })).text).toContain('full screen');
+    // The document is still there to work in.
+    await setDocument('typed in full screen');
+    await eventually('the text in the full-screen window', async () => (await focusedText()) === 'typed in full screen');
+
+    const left = await act('set_window_state', { window_id: windowId, state: 'windowed' });
+    expect(left.text).toMatch(/is now windowed\.$/);
+    const back = await eventually(
+      'the window to leave full screen',
+      async () => {
+        const w = await theWindow();
+        return !w.fullscreen && w.on_screen && w.width < screen.width - 100 ? w : undefined;
+      },
+      30_000,
+    );
+    expect(back).toMatchObject({ x: before.x, y: before.y, width: before.width, height: before.height });
+    await act('focus_window', { window_id: windowId });
+  }, 120_000);
 
   it('switches between applications', async () => {
     const finder = await act('activate_application', { application: 'Finder' });

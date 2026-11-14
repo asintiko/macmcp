@@ -27,6 +27,7 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:package": "node scripts/package-install-test.mjs",
     "docs:tools": "node dist/cli/main.js tools --format markdown --output docs/TOOLS.md",
     "prepare": "npm run build"
   },

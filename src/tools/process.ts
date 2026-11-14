@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import * as z from 'zod';
 import { ToolError } from '../core/errors.js';
 import { runProgram, truncateMiddle } from '../core/exec.js';
@@ -5,6 +6,9 @@ import { LIMITS } from '../core/runtime.js';
 import { type AnyTool, defineTool } from './registry.js';
 import { describeProcess } from './shell.js';
 import { formatDuration, parseEnvList, renderTable, resolveDirectory } from './util.js';
+
+/** macOS and most Linux systems have ps in /bin; a few (NixOS) only on PATH. */
+const PS = existsSync('/bin/ps') ? '/bin/ps' : 'ps';
 
 const SIGNALS = { TERM: 'SIGTERM', INT: 'SIGINT', HUP: 'SIGHUP', KILL: 'SIGKILL' } as const;
 
@@ -197,7 +201,7 @@ export function processTools(): AnyTool[] {
     examples: [{ note: 'Find Blender processes.', arguments: { filter: 'blender', sort_by: 'memory' } }],
     hints: { readOnly: true },
     async handler(args) {
-      const result = await runProgram('/bin/ps', ['-axo', 'pid=,ppid=,pcpu=,pmem=,rss=,user=,args='], { timeoutMs: 10_000 });
+      const result = await runProgram(PS, ['-axo', 'pid=,ppid=,pcpu=,pmem=,rss=,user=,args='], { timeoutMs: 10_000 });
       if (result.code !== 0) throw new ToolError('FAILED', `ps failed: ${result.stderr.trim()}`);
       const needle = args.filter?.toLowerCase();
       const rows = result.stdout
