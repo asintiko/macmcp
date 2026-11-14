@@ -67,6 +67,8 @@ export const LIMITS = {
   requestBodyBytes: 48 * 1024 * 1024,
   /** Largest file returned inline by read_file without an explicit range. */
   inlineReadBytes: 512 * 1024,
+  /** Longest a single tool call may block: hosted clients abort calls after about 240 seconds. */
+  callSeconds: 220,
   /** Largest chunk returned by download_file. */
   downloadChunkBytes: 4 * 1024 * 1024,
 } as const;
@@ -127,6 +129,7 @@ export class Runtime {
         stateDir: this.stateDir,
         home: this.home,
         env: this.env,
+        platform: this.platform,
       };
       if (this.options.extraReadOnly) prepareOptions.extraReadOnly = this.options.extraReadOnly;
       if (this.options.extraReadWrite) prepareOptions.extraReadWrite = this.options.extraReadWrite;
@@ -178,7 +181,7 @@ export class Runtime {
 
   /** Directory for temporary files that commands in the current mode can read and write. */
   get scratchDir(): string {
-    return this.sandbox ? path.join(this.sandbox.scratchDir, 'tmp') : path.join(this.stateDir, 'tmp');
+    return this.sandbox ? this.sandbox.tmpDir : path.join(this.stateDir, 'tmp');
   }
 
   setPaused(paused: boolean): void {

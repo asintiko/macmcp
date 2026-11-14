@@ -1,6 +1,7 @@
 import * as z from 'zod';
 import { ToolError } from '../core/errors.js';
 import { runProgram, truncateMiddle } from '../core/exec.js';
+import { LIMITS } from '../core/runtime.js';
 import { type AnyTool, defineTool } from './registry.js';
 import { describeProcess } from './shell.js';
 import { formatDuration, parseEnvList, renderTable, resolveDirectory } from './util.js';
@@ -95,7 +96,7 @@ export function processTools(): AnyTool[] {
     ].join(' '),
     input: z.object({
       process_id: z.string().describe('Id returned by run_command, start_process or a render tool, for example "p3".'),
-      wait_seconds: z.number().min(0).max(300).default(10).describe('Maximum time to wait for new output or exit. 0 returns immediately.'),
+      wait_seconds: z.number().min(0).max(LIMITS.callSeconds).default(10).describe('Maximum time to wait for new output or exit. 0 returns immediately.'),
       from_start: z.boolean().default(false).describe('Return all retained output from the beginning instead of only new output.'),
       max_chars: z.number().int().min(500).max(200_000).default(30_000).describe('Cap on returned output; the middle is cut out when exceeded.'),
     }),

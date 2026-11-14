@@ -5,7 +5,7 @@ import * as z from 'zod';
 import { ToolError } from '../core/errors.js';
 import { truncateMiddle, which } from '../core/exec.js';
 import type { ManagedProcess, SpawnPlan } from '../core/processes.js';
-import type { Runtime } from '../core/runtime.js';
+import { LIMITS, type Runtime } from '../core/runtime.js';
 import { type AnyTool, defineTool, type ToolContext, type ToolOutput } from './registry.js';
 import { formatDuration, parseEnvList, resolveDirectory, shellQuote, splitWords } from './util.js';
 
@@ -17,9 +17,9 @@ export const commandOptions = {
   timeout_seconds: z
     .number()
     .min(1)
-    .max(600)
+    .max(LIMITS.callSeconds)
     .default(60)
-    .describe('How long to wait. A command still running after this time is NOT killed: it continues in the background and a process_id is returned.'),
+    .describe('How long to wait (hosted clients such as Claude abort tool calls after about 240 s). A command still running after this time is NOT killed: it continues in the background and a process_id is returned.'),
   env: z.array(z.string()).optional().describe('Extra environment variables as NAME=value strings.'),
   stdin: z.string().optional().describe('Text to pass to the command on standard input.'),
   max_output_chars: z.number().int().min(500).max(200_000).default(30_000).describe('Cap on returned output; the middle is cut out when exceeded.'),
@@ -143,7 +143,7 @@ export function shellTools(): AnyTool[] {
       shell: z.enum(['zsh', 'bash', 'sh']).optional().describe("Shell to interpret the command. Default: the user's shell (zsh on macOS)."),
     }),
     examples: [
-      { note: 'Run the test suite of a Node project.', arguments: { command: 'npm test', timeout_seconds: 300 } },
+      { note: 'Run the test suite of a Node project.', arguments: { command: 'npm test', timeout_seconds: 180 } },
       { note: 'Inspect git state in a sub-directory.', arguments: { command: 'git status --short && git log --oneline -5', cwd: 'packages/app' } },
     ],
     hints: { destructive: true, openWorld: true },

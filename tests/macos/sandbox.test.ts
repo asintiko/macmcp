@@ -105,17 +105,20 @@ describe.runIf(process.platform === 'darwin')('Seatbelt sandbox enforcement (mac
   });
 
   it('provides a private, writable temporary directory', async () => {
-    const scratch = path.join(root, 'state', 'sandbox', 'tmp');
-    const result = await sh('f=$(mktemp) && echo tmp > "$f" && cat "$f" && rm "$f" && echo "$TMPDIR"');
+    const scratch = runtime.scratchDir;
+    expect(scratch).toMatch(/^\/private\/var\/folders\/.+\/T\/mcpclaude-[0-9a-f]{12}$/);
+    const result = await sh('f=$(mktemp) && echo tmp > "$f" && cat "$f" && rm "$f" && echo "$TMPDIR" && getconf DARWIN_USER_TEMP_DIR');
     expect(result.code, result.out).toBe(0);
-    expect(result.out).toContain('tmp\n');
-    expect(result.out).toContain(scratch);
-    // mktemp in its common spellings lands in the private directory, not the shared one.
+    expect(result.out.split('\n')).toEqual(['tmp', `${scratch}/`, `${scratch.replace('/private', '')}/`]);
+    // Apple tools that ignore TMPDIR land in the private directory too, not in the shared one.
     for (const form of ['mktemp', 'mktemp -d', 'mktemp -t build', 'mktemp -dt build', 'mktemp -q', `mktemp "$TMPDIR/custom.XXXXXX"`]) {
       const made = await sh(`p=$(${form}) && echo "$p" && rm -rf "$p"`);
       expect(made.code, `${form}: ${made.out}`).toBe(0);
-      expect(made.out, form).toContain(scratch);
+      expect(made.out, form).toContain(path.basename(scratch));
     }
+    // The shared per-user temp directory itself stays closed.
+    const shared = await sh(`ls "${path.dirname(scratch)}"`);
+    expect(shared.code, shared.out).not.toBe(0);
   });
 
   it('builds and runs native code', async () => {

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdir, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -195,30 +196,6 @@ const HOME_READ_FILES = ['.gitconfig', '.gitignore_global', '.config/git/config'
 /** PATH entries whose parent holds unrelated user data and must not be opened wholesale. */
 const MIXED_PARENTS = new Set(['.local', '.cargo', '.config', 'Library', 'go']);
 
-/**
- * macOS `mktemp` puts files in the per-user temporary directory even when TMPDIR is set.
- * That directory is shared with the user's other applications and stays closed inside the
- * sandbox, so sandboxed commands get this stand-in first on PATH: it supplies an explicit
- * template in $TMPDIR whenever the caller did not give one.
- */
-const MKTEMP_SHIM = `#!/bin/sh
-real=/usr/bin/mktemp
-dir=\${TMPDIR%/}
-flags=""
-prefix=""
-while [ $# -gt 0 ]; do
-  case "$1" in
-    -t) prefix=$2; shift 2 ;;
-    -*t) cluster=\${1%t}; [ "$cluster" != "-" ] && flags="$flags $cluster"; prefix=$2; shift 2 ;;
-    --) shift; break ;;
-    -*) flags="$flags $1"; shift ;;
-    *) break ;;
-  esac
-done
-if [ $# -gt 0 ]; then exec "$real" $flags "$@"; fi
-if [ -n "$prefix" ]; then exec "$real" $flags "$dir/$prefix.XXXXXXXX"; fi
-exec "$real" $flags "$dir/tmp.XXXXXXXXXX"
-`;
 
 async function realIfExists(target: string, kind: 'dir' | 'file'): Promise<string | undefined> {
   try {
@@ -266,37 +243,61 @@ export interface PreparedSandbox {
   env: Record<string, string>;
   /** Variables removed from the environment of sandboxed commands. */
   unsetEnv: string[];
-  scratchDir: string;
+  /** Private temporary directory of sandboxed commands; also readable and writable from here. */
+  tmpDir: string;
 }
 
 export interface PrepareSandboxOptions {
   projectDir: string;
-  /** mcpclaude state directory; the scratch area is created beneath it. */
+  /** mcpclaude state directory; the cache area is created beneath it. */
   stateDir: string;
   home: string;
   env: NodeJS.ProcessEnv;
+  platform?: NodeJS.Platform;
   extraReadOnly?: string[];
   extraReadWrite?: string[];
 }
 
-/** Create the scratch area and compute the profile for a project directory. */
+/**
+ * macOS gives every user a temporary and a cache directory (/var/folders/…/T and …/C) that
+ * Apple's own tools use regardless of TMPDIR: mktemp, xcrun, sips, anything built on
+ * NSTemporaryDirectory. They are shared with all the user's applications, so the sandbox
+ * keeps them closed and instead points those tools at private sub-directories through
+ * DIRHELPER_USER_DIR_SUFFIX, the mechanism the system uses for sandboxed apps.
+ */
+async function darwinPrivateDirs(suffix: string): Promise<{ tmp: string; cache: string } | undefined> {
+  const dirs: string[] = [];
+  for (const name of ['DARWIN_USER_TEMP_DIR', 'DARWIN_USER_CACHE_DIR']) {
+    const env = { ...process.env };
+    delete env['DIRHELPER_USER_DIR_SUFFIX'];
+    const result = await runProgram('/usr/bin/getconf', [name], { timeoutMs: 5000, env }).catch(() => undefined);
+    const base = result?.code === 0 ? result.stdout.trim() : '';
+    const real = base ? await realIfExists(base, 'dir') : undefined;
+    if (!real) return undefined;
+    const dir = path.join(real, suffix);
+    await rm(dir, { recursive: true, force: true });
+    await mkdir(dir, { mode: 0o700 });
+    dirs.push(dir);
+  }
+  return { tmp: dirs[0] as string, cache: dirs[1] as string };
+}
+
+/** Create the private scratch directories and compute the profile for a project directory. */
 export async function prepareSandbox(options: PrepareSandboxOptions): Promise<PreparedSandbox> {
   const scratchRoot = path.join(options.stateDir, 'sandbox');
   await rm(scratchRoot, { recursive: true, force: true });
-  const tmp = path.join(scratchRoot, 'tmp');
-  const cache = path.join(scratchRoot, 'cache');
-  await mkdir(tmp, { recursive: true, mode: 0o700 });
-  await mkdir(cache, { recursive: true, mode: 0o700 });
-  const npmrc = path.join(scratchRoot, 'npmrc');
-  await writeFile(npmrc, '', { mode: 0o600 });
-  const bin = path.join(scratchRoot, 'bin');
-  await mkdir(bin, { mode: 0o700 });
-  await writeFile(path.join(bin, 'mktemp'), MKTEMP_SHIM, { mode: 0o755 });
+  await mkdir(path.join(scratchRoot, 'tmp'), { recursive: true, mode: 0o700 });
+  await mkdir(path.join(scratchRoot, 'cache'), { recursive: true, mode: 0o700 });
+  await writeFile(path.join(scratchRoot, 'npmrc'), '', { mode: 0o600 });
   const scratchReal = await realpath(scratchRoot);
-  const tmpReal = path.join(scratchReal, 'tmp');
   const cacheReal = path.join(scratchReal, 'cache');
 
-  const readWriteDirs = [scratchReal];
+  // One suffix per installation, so a restart reuses and cleans the same directories.
+  const suffix = `mcpclaude-${createHash('sha256').update(scratchReal).digest('hex').slice(0, 12)}`;
+  const darwin = (options.platform ?? process.platform) === 'darwin' ? await darwinPrivateDirs(suffix) : undefined;
+  const tmpDir = darwin?.tmp ?? path.join(scratchReal, 'tmp');
+
+  const readWriteDirs = [scratchReal, ...(darwin ? [darwin.tmp, darwin.cache] : [])];
   for (const dir of options.extraReadWrite ?? []) {
     const real = await realIfExists(dir, 'dir');
     if (real) readWriteDirs.push(real);
@@ -314,8 +315,8 @@ export async function prepareSandbox(options: PrepareSandboxOptions): Promise<Pr
 
   const spec: SandboxSpec = { projectDir: options.projectDir, readWriteDirs, readOnlyDirs, readOnlyFiles };
   const env: Record<string, string> = {
-    PATH: [path.join(scratchReal, 'bin'), options.env['PATH'] ?? '/usr/bin:/bin:/usr/sbin:/sbin'].join(path.delimiter),
-    TMPDIR: `${tmpReal}/`,
+    TMPDIR: `${tmpDir}/`,
+    ...(darwin ? { DIRHELPER_USER_DIR_SUFFIX: suffix } : {}),
     XDG_CACHE_HOME: cacheReal,
     npm_config_cache: path.join(cacheReal, 'npm'),
     npm_config_userconfig: path.join(scratchReal, 'npmrc'),
@@ -339,7 +340,7 @@ export async function prepareSandbox(options: PrepareSandboxOptions): Promise<Pr
     env,
     // The ssh-agent socket would let commands authenticate as the user elsewhere.
     unsetEnv: ['SSH_AUTH_SOCK'],
-    scratchDir: scratchReal,
+    tmpDir,
   };
 }
 
