@@ -3,6 +3,55 @@
 One entry per milestone, newest first. Each entry lists what was verified and how; the
 checkboxes in [PLAN.md](PLAN.md) are only ticked on the basis of these entries.
 
+## M4 — Desktop driver and Computer Use (2026-11-14)
+
+- Finished the milestone that commit `5f9a82f` had left in progress: the wizard now prepares
+  desktop control after Full System Access is chosen (builds the helper, asks macOS for
+  Accessibility and Screen Recording, names what is missing and where to grant it),
+  `mcpclaude doctor` reports the Command Line Tools, the helper and both permissions, and a
+  `computer-use` usage guide is served to agents.
+- Verified in CI run 43577764440 (commit `6340195`): Linux Node 22 and 24, `macos-15`
+  (Swift 6.1.2) and `macos-26` (Swift 6.3.3) all green; 27 test files on macOS.
+- `tests/macos/computer-use.test.ts` drives a real desktop through the MCP endpoint, 17 steps
+  in order, each read back from the system: screenshots (JPEG, lossless PNG that is not one
+  flat colour, enlarged region, single window), pointer position after `mouse_move`, a
+  document opened in TextEdit, window moved/resized/dragged by its title bar/minimised/
+  restored/closed, text typed (including capitals, symbols, accents and characters on no
+  key), shortcuts, clipboard copy and paste, double- and triple-click selection, scrolling
+  (scroll bar value), Accessibility search/tree/element-at/set-value/press, menu listing and
+  selection, application switching, AppleScript and JXA (including control of System Events),
+  a batch with held Shift, quit. Screenshots of every step are kept as a CI artifact.
+- `tests/integration/tools-desktop.test.ts` (39 tests, any OS) runs the same tools against a
+  fake Mac: coordinate conversion on Retina and secondary displays, helper commands sent,
+  result texts, error mapping, ordering of concurrent calls, visibility per permission mode.
+- Found by the real-desktop runs and fixed:
+  - a control that disappears through its own action (a button closing its panel) was
+    reported as "Unknown"; it is now described as it was, with a note that it is gone;
+  - menu items report a stale "disabled" state until their menu is opened, so
+    `select_menu_item` refused commands that were available; it now opens the menu to
+    refresh the state before deciding, and closes it again if the item really is disabled;
+  - modifiers held with `key_down` were not applied to the events that followed; they are
+    now, and anything still held when a batch ends or fails is released;
+  - the scroll bars of a text view are told apart by a new `orientation` field, and
+    unlabelled controls show their subrole (`Button (CloseButton)`).
+- Not verified (left open in PLAN.md): right/middle click and full-screen windows on a real
+  desktop, Retina and multi-display hardware, and a Mac where the privacy permissions have
+  not been granted — the hosted runners have one 1x display and grant both permissions.
+
+## M3 — CLI, wizard and tunnel (2026-11-14)
+
+- Implemented in commit `c413c07`: argument parsing and help, the three-step wizard, the
+  ngrok tunnel manager, `doctor`, `tools`, `config` and the live activity view.
+- Verified in CI run 43560026710 (commit `c413c07`) and again in 43577764440: Linux Node 22
+  and 24, `macos-15`, `macos-26`. `tests/e2e/cli.test.ts` runs the compiled binary on a
+  pseudo-terminal: the wizard walked with the keyboard, an agent served, pause/resume/quit,
+  path validation, the Full System Access confirmation, Ctrl+C, the saved directory offered
+  on the next start, and the no-auth confirmation. The real ngrok SDK is exercised up to its
+  rejection of an invalid authtoken.
+- Not verified: a live tunnel reachable from the internet. Neither the development
+  environment nor the repository has an ngrok authtoken; `mcpclaude doctor` performs that
+  round trip on a machine that has one.
+
 ## M2 — Shell, processes, files, transfer, system tools (2026-11-14)
 
 - Implemented 33 tools on top of the M1 framework (35 with the two meta tools): `run_command`,

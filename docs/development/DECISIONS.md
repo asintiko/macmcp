@@ -119,3 +119,27 @@ the interface itself.
 The development machine is Linux. Everything macOS-specific is exercised in GitHub Actions on
 hosted macOS runners (the repository is public, so these minutes are free). Tasks in PLAN.md
 are only ticked when the corresponding check has actually passed there or locally.
+
+## D14 — Held keys and buttons never outlive a call
+
+`key_down` / `mouse_down` exist only as steps of `computer_actions`. The helper adds held
+modifiers to the events that follow (as a real keyboard does) and releases everything still
+held when the batch ends or fails. A stuck Shift key or a drag that never ends would leave the
+user's Mac in a state they cannot easily diagnose; no workflow needs a hold to span calls.
+
+## D15 — Menu items are validated by opening the menu
+
+Applications update the enabled state of menu items only when a menu opens or a shortcut is
+matched, so the Accessibility API reports stale values in between. `select_menu_item` presses
+an item directly when it reports enabled; when it reports disabled the helper opens the menus
+that lead to it (which refreshes the state), then presses it or — if it really is disabled —
+closes the menus and says so. Always opening the menus would be slower and flicker for the
+common case. `list_menus` documents that the state it shows can be out of date.
+
+## D16 — Desktop preparation is part of the wizard, and never fatal
+
+After Full System Access is chosen the CLI builds the helper and asks macOS for Accessibility
+and Screen Recording, so the system dialogs appear while the user is at the terminal rather
+than in the middle of an agent's task. Missing tools or permissions are reported with the
+exact settings page and do not stop the server: shell and file tools work regardless, and the
+desktop tools return `MACOS_PERMISSION_REQUIRED` / `DEPENDENCY_MISSING` with the same advice.

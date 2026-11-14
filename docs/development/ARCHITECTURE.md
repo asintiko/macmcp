@@ -150,6 +150,14 @@ detail but do not change the coordinate space.
 Desktop actions are serialised through a mutex so concurrent tool calls cannot interleave
 input events. Action tools can return a fresh screenshot in the same result.
 
+The helper is a one-shot process: it reads a list of commands as JSON, runs them in order and
+prints the results, stopping at the first failure. A batch (`computer_actions`) is therefore
+one process, and keys or buttons it holds are released before it exits.
+
+When Full System Access is chosen, the wizard builds the helper and asks macOS for the
+Accessibility and Screen Recording permissions (`src/cli/desktop-setup.ts`); `mcpclaude
+doctor` reports the same checks without prompting.
+
 ## 8. Creative applications
 
 - **After Effects** — ExtendScript is executed through AppleScript (`DoScriptFile`) with a

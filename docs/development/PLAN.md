@@ -77,29 +77,34 @@ Constraints that shape the plan:
 
 | Done | Task | Verified by |
 |---|---|---|
-| [ ] | Argument parsing, `--help`, `--version`, subcommands (`start`, `doctor`, `tools`, `config`) | unit tests + CLI smoke tests |
-| [ ] | ngrok tunnel manager: authtoken discovery, start/stop, status, error mapping | unit tests with a fake provider; real SDK failure path |
+| [x] | Argument parsing, `--help`, `--version`, subcommands (`start`, `doctor`, `tools`, `config`) | unit tests + CLI smoke tests |
+| [x] | ngrok tunnel manager: authtoken discovery, start/stop, status, error mapping | unit tests with a fake provider; real SDK failure path |
 | [ ] | Live ngrok tunnel reachable from the internet | **needs an ngrok authtoken** |
-| [ ] | Wizard step 1: server + tunnel + connection instructions | PTY end-to-end test |
-| [ ] | Wizard step 2: directory selection (browser, manual path, validation) | unit tests + PTY end-to-end test |
-| [ ] | Wizard step 3: permission levels explained and selected, explicit confirmation for Full Access | unit tests + PTY end-to-end test |
-| [ ] | Live activity view, pause/info/quit keys, graceful shutdown | PTY end-to-end test |
-| [ ] | `doctor` diagnostics | CLI smoke test (Linux + macOS CI) |
+| [x] | Wizard step 1: server + tunnel + connection instructions | PTY end-to-end test |
+| [x] | Wizard step 2: directory selection (browser, manual path, validation) | unit tests + PTY end-to-end test |
+| [x] | Wizard step 3: permission levels explained and selected, explicit confirmation for Full Access | unit tests + PTY end-to-end test |
+| [x] | Live activity view, pause/info/quit keys, graceful shutdown | PTY end-to-end test |
+| [x] | `doctor` diagnostics | CLI smoke test (Linux + macOS CI) |
 
 ### M4 — Desktop driver and Computer Use (macOS)
 
 | Done | Task | Verified by |
 |---|---|---|
-| [ ] | Swift helper compiles on current macOS SDKs | macOS CI build |
-| [ ] | Helper build cache and invocation from Node | unit tests + macOS CI |
-| [ ] | Screenshot pipeline (capture, scale, zoom region, window) and coordinate mapping | unit tests + macOS CI (real capture) |
-| [ ] | Mouse: move, click, double/right/middle click, drag, scroll | macOS CI (cursor read-back, real UI effects) |
-| [ ] | Keyboard: type text, key combos, named keys | macOS CI (typed text read back) |
-| [ ] | Applications: list, launch, activate, quit, open path | macOS CI |
-| [ ] | Windows: list, focus, move/resize, minimise, close | macOS CI |
-| [ ] | UI elements and menus through Accessibility | macOS CI |
-| [ ] | `run_applescript`, clipboard | macOS CI |
-| [ ] | `computer_actions` batch and `wait` | unit tests + macOS CI |
+| [x] | Swift helper compiles on current macOS SDKs | macOS CI build (Swift 6.1 and 6.3) |
+| [x] | Helper build cache and invocation from Node | unit tests + macOS CI |
+| [x] | Screenshot pipeline (capture, scale, zoom region, window) and coordinate mapping | unit tests + macOS CI (real capture) |
+| [x] | Mouse: move, click, double/triple click, drag, scroll | macOS CI (cursor read-back, real UI effects) |
+| [ ] | Mouse: right and middle click with a real effect | covered against the fake desktop only |
+| [x] | Keyboard: type text, key combos, named keys | macOS CI (typed text read back) |
+| [x] | Applications: list, launch, activate, quit, open path | macOS CI |
+| [x] | Windows: list, focus, move/resize, minimise, close | macOS CI |
+| [ ] | Windows: full screen and back | not exercised on the runners |
+| [x] | UI elements and menus through Accessibility | macOS CI |
+| [x] | `run_applescript`, clipboard | macOS CI |
+| [x] | `computer_actions` batch and `wait` | unit tests + macOS CI |
+| [x] | Wizard prepares desktop control (helper build, permission prompts); `doctor` reports it | unit tests + macOS CI |
+| [ ] | Retina displays and several displays on real hardware | coordinate mapping is unit-tested; the runners have one 1024×768 display at 1x |
+| [ ] | Behaviour without Accessibility / Screen Recording permission on a real Mac | error paths are tested against the fake desktop; the runners grant both |
 
 ### M5 — Creative applications
 
