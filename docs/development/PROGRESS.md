@@ -3,6 +3,51 @@
 One entry per milestone, newest first. Each entry lists what was verified and how; the
 checkboxes in [PLAN.md](PLAN.md) are only ticked on the basis of these entries.
 
+## M7 — Release hardening (2026-11-14)
+
+- Verified with `npm run test:package` (`scripts/package-install-test.mjs`): builds the npm
+  tarball (`npm pack`), verifies that all required files (including `README.md`, `docs/README.md`,
+  `docs/TOOLS.md`, Swift helper source, asset guides) are packaged and no source/test/dev files leak,
+  installs it globally into a clean throwaway prefix, and verifies:
+  - `mcpclaude --version` prints `0.1.0`;
+  - `mcpclaude --help` prints usage and doctor reference;
+  - `mcpclaude tools` reports all 72 tools in JSON and matches `docs/TOOLS.md` in Markdown;
+  - `mcpclaude doctor` diagnoses the environment without blocking failures;
+  - Starts the installed server in non-interactive Project-Only mode and connects a real MCP client
+    via Streamable HTTP transport;
+  - Tests setup gate, tool listing (33 Project-Only tools visible), `server_info`, `usage_guide`,
+    `read_file`, `run_command`, path confinement refusals, access token authentication rejection (401),
+    and clean SIGTERM shutdown.
+- All plan items, progress entries, and documentation synchronized and verified.
+
+## M6 — Documentation (2026-11-14)
+
+- Wrote comprehensive user and administrator documentation in `README.md`:
+  - Quick start, installation, interactive 3-step wizard;
+  - Client configuration for Claude Desktop (`claude_desktop_config.json`), Web Claude, and other MCP clients;
+  - Security model, Project-Only Seatbelt sandbox vs Full System Access, access tokens, and origin protection;
+  - macOS privacy permissions (TCC: Accessibility, Screen Recording, Automation);
+  - CLI command and option reference;
+  - Interactive controls (`p` pause/resume, `i` info, `q` quit);
+  - Troubleshooting guide for common errors (`SETUP_PENDING`, `MACOS_PERMISSION_REQUIRED`, etc.).
+- Generated complete Markdown tool reference `docs/TOOLS.md` covering all 72 MCP tools, schemas,
+  access modes, and examples using `npm run docs:tools`.
+- Created `docs/README.md` as a documentation hub linking user guides, tool references, built-in
+  agent guides (`assets/guides/`), and architectural design notes.
+
+## M5 — Creative applications (2026-11-14)
+
+- Implemented creative suite tools:
+  - **Blender:** `blender_info`, `blender_launch`, `blender_run_python`, `blender_render`, and the
+    IPC bridge script `assets/blender/mcpclaude_bridge.py`. Supports headless Python execution,
+    headless frame/animation rendering, and live GUI session control via bridge protocol.
+    Verified in CI with real Blender: on Linux (snap install under Xvfb) and on macOS (`brew install --cask blender`).
+  - **Adobe After Effects:** `after_effects_info`, `after_effects_run_script`, `after_effects_render`.
+    Evaluates ExtendScript, reads project/composition state, and triggers headless renders via `aerender`.
+    Verified in integration tests with stubbed `osascript` and `aerender`. (Live verification with a
+    licensed After Effects installation remains open as documented in PLAN.md).
+- Added dedicated agent usage guides: `assets/guides/blender.md` and `assets/guides/after-effects.md`.
+
 ## M4 — Desktop driver and Computer Use (2026-11-14)
 
 - Finished the milestone that commit `5f9a82f` had left in progress: the wizard now prepares

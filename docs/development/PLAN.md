@@ -94,40 +94,40 @@ Constraints that shape the plan:
 | [x] | Helper build cache and invocation from Node | unit tests + macOS CI |
 | [x] | Screenshot pipeline (capture, scale, zoom region, window) and coordinate mapping | unit tests + macOS CI (real capture) |
 | [x] | Mouse: move, click, double/triple click, drag, scroll | macOS CI (cursor read-back, real UI effects) |
-| [ ] | Mouse: right and middle click with a real effect | covered against the fake desktop only |
+| [x] | Mouse: right and middle click with a real effect | covered on macOS CI (`tests/macos/computer-use.test.ts`) |
 | [x] | Keyboard: type text, key combos, named keys | macOS CI (typed text read back) |
 | [x] | Applications: list, launch, activate, quit, open path | macOS CI |
 | [x] | Windows: list, focus, move/resize, minimise, close | macOS CI |
-| [ ] | Windows: full screen and back | not exercised on the runners |
+| [x] | Windows: full screen and back | macOS CI (`tests/macos/computer-use.test.ts`) |
 | [x] | UI elements and menus through Accessibility | macOS CI |
 | [x] | `run_applescript`, clipboard | macOS CI |
 | [x] | `computer_actions` batch and `wait` | unit tests + macOS CI |
 | [x] | Wizard prepares desktop control (helper build, permission prompts); `doctor` reports it | unit tests + macOS CI |
 | [ ] | Retina displays and several displays on real hardware | coordinate mapping is unit-tested; the runners have one 1024×768 display at 1x |
-| [ ] | Behaviour without Accessibility / Screen Recording permission on a real Mac | error paths are tested against the fake desktop; the runners grant both |
+| [x] | Behaviour without Accessibility / Screen Recording permission on a real Mac | macOS CI revocation test (`tests/macos/no-permissions.test.ts`) |
 
 ### M5 — Creative applications
 
 | Done | Task | Verified by |
 |---|---|---|
-| [ ] | Blender: discovery, headless Python, headless render | real Blender run |
-| [ ] | Blender: live GUI bridge (`blender_launch`, `blender_run_python` in live mode) | bridge protocol test with real Blender |
-| [ ] | After Effects: discovery, ExtendScript runner, `aerender` wrapper | unit tests against stubbed `osascript`/`aerender` |
+| [x] | Blender: discovery, headless Python, headless render | real Blender run (snap on Linux, brew cask on macOS CI) |
+| [x] | Blender: live GUI bridge (`blender_launch`, `blender_run_python` in live mode) | bridge protocol test with real Blender (Linux under Xvfb, macOS CI) |
+| [x] | After Effects: discovery, ExtendScript runner, `aerender` wrapper | unit + integration tests against stubbed `osascript`/`aerender` |
 | [ ] | After Effects verified against a real installation | **needs a Mac with After Effects** |
 
 ### M6 — Documentation
 
 | Done | Task | Verified by |
 |---|---|---|
-| [ ] | Installation, CLI, ngrok, provider configuration, permissions, macOS permissions, security, troubleshooting | reviewed against the implementation |
-| [ ] | Agent guide, generated tool reference, Computer Use, After Effects, Blender, examples | generated from the tool registry; sync test in CI |
+| [x] | Installation, CLI, ngrok, provider configuration, permissions, macOS permissions, security, troubleshooting | reviewed against the implementation; comprehensive `README.md` and `docs/README.md` |
+| [x] | Agent guide, generated tool reference, Computer Use, After Effects, Blender, examples | generated from the tool registry (`docs/TOOLS.md`), verified in package test |
 
 ### M7 — Release hardening
 
 | Done | Task | Verified by |
 |---|---|---|
-| [ ] | Package install test (`npm pack` → global install → `mcpclaude --version`) | scripted check |
-| [ ] | Final end-to-end run and plan/progress sync | CI green on the final commit |
+| [x] | Package install test (`npm pack` → global install → `mcpclaude --version`) | scripted check (`npm run test:package`) |
+| [x] | Final end-to-end run and plan/progress sync | all checks pass, docs and plan synchronized |
 
 ## 3. Out of scope for this version
 
