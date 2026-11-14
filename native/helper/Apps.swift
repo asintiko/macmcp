@@ -147,8 +147,17 @@ func windowServerList(_ options: CGWindowListOption, _ relativeTo: CGWindowID = 
 
 func axWindows(_ app: NSRunningApplication) -> [AXUIElement] {
   let element = AXUIElementCreateApplication(app.processIdentifier)
-  AXUIElementSetMessagingTimeout(element, 1.5)
-  return (axValue(element, "AXWindows") as? [AXUIElement]) ?? []
+  // An application that is busy (starting, being activated, animating) may not answer in time
+  // and would then look as if it had no windows: ask once more, with more patience.
+  let timeouts: [Float] = [1.5, 4.0]
+  for timeout in timeouts {
+    AXUIElementSetMessagingTimeout(element, timeout)
+    var value: CFTypeRef?
+    let status = AXUIElementCopyAttributeValue(element, "AXWindows" as CFString, &value)
+    if status == .success { return (value as? [AXUIElement]) ?? [] }
+    if status != .cannotComplete { break }
+  }
+  return []
 }
 
 func windowNumber(_ window: AXUIElement) -> Int? {

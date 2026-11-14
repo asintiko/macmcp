@@ -79,11 +79,8 @@ describe.runIf(process.platform === 'darwin')('computer use on a real Mac', () =
   /** The document window, or undefined while macOS does not list it (during a full-screen transition). */
   const maybeWindow = async (): Promise<WindowInfo | undefined> => (await textEditWindows()).find((w) => w.window_id === windowId);
 
-  const theWindow = async (): Promise<WindowInfo> => {
-    const found = (await textEditWindows()).find((w) => w.window_id === windowId);
-    if (!found) throw new Error(`Window ${windowId} is gone`);
-    return found;
-  };
+  /** The document window. An application that is busy for a moment is asked again before giving up. */
+  const theWindow = async (): Promise<WindowInfo> => eventually(`window ${windowId} to be listed`, maybeWindow, 10_000);
 
   /** Text of the element that has keyboard focus. */
   const focusedText = async (): Promise<string> => {
