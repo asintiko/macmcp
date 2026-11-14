@@ -54,6 +54,10 @@ jobs:
           node --version
       - run: npm ci
       - run: npm run build
+      # Compiled again by the tests through the product's own build step; done here first so that
+      # compiler diagnostics appear in full.
+      - name: Compile the desktop helper
+        run: swiftc -swift-version 5 -module-name mcpclaude_helper -o "$RUNNER_TEMP/mcpclaude-helper" native/helper/*.swift
       - run: npm test
       - name: Sandbox denials (diagnostics)
         if: failure()

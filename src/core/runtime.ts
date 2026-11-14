@@ -3,6 +3,8 @@ import { mkdir, realpath, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import type { AuthMode } from '../server/auth.js';
+import { Desktop } from '../desktop/desktop.js';
+import { type DesktopDriver, MacDesktopDriver } from '../desktop/driver.js';
 import { AuditLog } from './audit.js';
 import { ToolError } from './errors.js';
 import { PathPolicy, type PermissionMode } from './permissions.js';
@@ -48,6 +50,10 @@ export interface RuntimeOptions {
   /** Extra directories sandboxed commands may read / read and write. */
   extraReadOnly?: string[];
   extraReadWrite?: string[];
+  /** Desktop driver; by default the macOS driver on macOS and none elsewhere. `null` disables it. */
+  desktop?: DesktopDriver | null;
+  /** Long edge of full screenshots in pixels (the coordinate space of the desktop tools). */
+  screenshotMaxDimension?: number;
 }
 
 export interface SandboxStatus {
@@ -88,6 +94,8 @@ export class Runtime {
   readonly processes = new ProcessManager();
   readonly transfers = new TransferStore();
   readonly startedAt = Date.now();
+  /** Screen, mouse, keyboard, applications and windows; undefined where there is no desktop driver. */
+  readonly desktop: Desktop | undefined;
 
   state: RuntimeState = 'setup';
   paused = false;
@@ -113,6 +121,10 @@ export class Runtime {
     this.authMode = options.authMode;
     this.audit = new AuditLog(options.auditToDisk === false ? undefined : path.join(options.stateDir, 'logs'));
     this.events.setMaxListeners(0);
+    const driver = options.desktop === null ? undefined : (options.desktop ?? (this.platform === 'darwin' ? new MacDesktopDriver({ stateDir: this.stateDir }) : undefined));
+    this.desktop = driver
+      ? new Desktop(driver, options.screenshotMaxDimension !== undefined ? { maxDimension: options.screenshotMaxDimension } : {})
+      : undefined;
   }
 
   /** Called once the user has chosen a directory and a permission level. */
@@ -148,7 +160,7 @@ export class Runtime {
 
   /** Whether desktop control (screenshots, input, windows) exists on this host. */
   get desktopAvailable(): boolean {
-    return false;
+    return this.desktop !== undefined;
   }
 
   get policy(): PathPolicy {

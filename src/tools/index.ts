@@ -1,11 +1,16 @@
+import { appTools } from './apps.js';
+import { computerTools } from './computer.js';
 import { fileTools } from './files.js';
 import { metaTools } from './meta.js';
 import { navigationTools } from './navigation.js';
 import { processTools } from './process.js';
 import { type AnyTool, ToolRegistry } from './registry.js';
+import { scriptingTools } from './scripting.js';
 import { shellTools } from './shell.js';
 import { systemTools } from './system.js';
 import { transferTools } from './transfer.js';
+import { uiTools } from './ui.js';
+import { windowTools } from './windows.js';
 
 /** Every tool the server can offer, in documentation order. */
 export function createToolRegistry(): ToolRegistry {
@@ -19,6 +24,11 @@ export function createToolRegistry(): ToolRegistry {
     ...navigationTools(),
     ...transferTools(),
     ...systemTools(),
+    ...appTools(),
+    ...windowTools(),
+    ...computerTools(),
+    ...uiTools(),
+    ...scriptingTools(),
   ];
   holder.registry = new ToolRegistry(tools);
   return holder.registry;
