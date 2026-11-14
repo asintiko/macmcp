@@ -201,10 +201,11 @@ func windowList(_ params: JSON) throws -> JSON {
         "z": order[number] ?? 0,
       ]
       if let bounds = entry[kCGWindowBounds as String] as? [String: Any] {
-        info["frame"] = [
-          "x": (bounds["X"] as? NSNumber)?.doubleValue ?? 0, "y": (bounds["Y"] as? NSNumber)?.doubleValue ?? 0,
-          "width": (bounds["Width"] as? NSNumber)?.doubleValue ?? 0, "height": (bounds["Height"] as? NSNumber)?.doubleValue ?? 0,
-        ]
+        let x: Double = (bounds["X"] as? NSNumber)?.doubleValue ?? 0.0
+        let y: Double = (bounds["Y"] as? NSNumber)?.doubleValue ?? 0.0
+        let width: Double = (bounds["Width"] as? NSNumber)?.doubleValue ?? 0.0
+        let height: Double = (bounds["Height"] as? NSNumber)?.doubleValue ?? 0.0
+        info["frame"] = rectJSON(CGRect(x: x, y: y, width: width, height: height))
       }
       windows.append(info)
     }
