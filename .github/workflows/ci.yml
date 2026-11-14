@@ -31,9 +31,15 @@ jobs:
       - run: npm run build
       - run: npm test
 
+  # macOS-only behaviour (Seatbelt sandbox, screen capture, input injection, Accessibility)
+  # can only be exercised on a real Mac, so the same suite runs on hosted macOS runners.
   macos:
-    name: Test (macOS)
-    runs-on: macos-latest
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-26, macos-15]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -49,16 +55,7 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm test
-
-  # Temporary: reports which desktop capabilities hosted macOS runners provide.
-  macos-probe:
-    name: macOS capability probe (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    continue-on-error: true
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-26, macos-15]
-    steps:
-      - uses: actions/checkout@v7
-      - run: bash scripts/ci/macos-probe.sh
+      - name: Sandbox denials (diagnostics)
+        if: failure()
+        run: |
+          log show --last 6m --style compact --predicate 'sender == "Sandbox"' 2>/dev/null | grep -i "deny" | sed -E 's/^.*Sandbox: //' | sort | uniq -c | sort -rn | head -80 || true

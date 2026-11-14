@@ -52,13 +52,13 @@ Constraints that shape the plan:
 
 | Done | Task | Verified by |
 |---|---|---|
-| [ ] | Config store (`~/.mcpclaude/config.json`, 0600) and access-token generation | unit tests |
-| [ ] | Runtime state and permission policy (path confinement, symlink-safe) | unit tests |
-| [ ] | Tool framework: definition, zod schema, examples, error model, per-mode visibility, audit log | unit tests + catalogue lint test |
-| [ ] | HTTP server: MCP endpoint for 2026-07-28 and 2025-era clients | integration tests with the official MCP client in both eras |
-| [ ] | Auth: bearer header, token-in-URL, explicit no-auth; failed-auth throttle | integration tests |
-| [ ] | Setup gate (tool calls refused until the wizard finishes) and pause switch | integration tests |
-| [ ] | Meta tools: `server_info`, `usage_guide` | integration tests |
+| [x] | Config store (`~/.mcpclaude/config.json`, 0600) and access-token generation | unit tests |
+| [x] | Runtime state and permission policy (path confinement, symlink-safe) | unit tests |
+| [x] | Tool framework: definition, zod schema, examples, error model, per-mode visibility, audit log | unit tests + catalogue lint test |
+| [x] | HTTP server: MCP endpoint for 2026-07-28 and 2025-era clients | integration tests with the official MCP client in both eras |
+| [x] | Auth: bearer header, token-in-URL, explicit no-auth; failed-auth throttle | integration tests |
+| [x] | Setup gate (tool calls refused until the wizard finishes) and pause switch | integration tests |
+| [x] | Meta tools: `server_info`, `usage_guide` | integration tests |
 
 ### M2 — Shell, processes, files, transfer, system tools
 
