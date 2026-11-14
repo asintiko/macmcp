@@ -52,6 +52,14 @@ jobs:
           uname -m
           swiftc --version
           node --version
+      - name: Probe per-user temp directory suffix (temporary)
+        run: |
+          getconf DARWIN_USER_TEMP_DIR
+          DIRHELPER_USER_DIR_SUFFIX=mcpclaude-probe getconf DARWIN_USER_TEMP_DIR
+          DIRHELPER_USER_DIR_SUFFIX=mcpclaude-probe getconf DARWIN_USER_CACHE_DIR
+          DIRHELPER_USER_DIR_SUFFIX=mcpclaude-probe mktemp
+          DIRHELPER_USER_DIR_SUFFIX=mcpclaude-probe /usr/bin/python3 -c "import tempfile; print(tempfile.gettempdir())" || true
+          ls -la "$(getconf DARWIN_USER_TEMP_DIR)" | head -8
       - run: npm ci
       - run: npm run build
       - run: npm test
