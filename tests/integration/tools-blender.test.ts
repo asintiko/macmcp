@@ -36,11 +36,17 @@ describe('Blender tools with a stand-in executable', () => {
 
   it('reports the installation', async () => {
     const info = await h.call('blender_info');
-    expect(info.text.split('\n')).toEqual([
-      `Installed: Blender 9.9.1 — ${path.join(stubDir, 'blender')}`,
-      'Live session: none. blender_launch starts Blender with its window; blender_run_python and blender_render also work without one.',
-    ]);
+    const lines = info.text.split('\n');
+    // MCPCLAUDE_BLENDER comes first; a Blender that is really installed here is listed after it.
+    expect(lines[0]).toBe(`Installed: Blender 9.9.1 — ${path.join(stubDir, 'blender')}`);
+    for (const line of lines.slice(1, -1)) expect(line).toMatch(/^ {4}also: Blender \d+\.\d+(\.\d+)? — \//);
+    expect(lines.at(-1)).toBe('Live session: none. blender_launch starts Blender with its window; blender_run_python and blender_render also work without one.');
     expect(info.data).toMatchObject({ installed: [{ version: '9.9.1', path: path.join(stubDir, 'blender'), application: null }], live_session: null });
+    if (process.platform === 'darwin') {
+      // An application bundle and the launcher script a package manager puts on PATH are one installation.
+      const apps = (info.data?.['installed'] as { application: string | null; path: string }[]).filter((install) => install.path !== path.join(stubDir, 'blender'));
+      expect(apps.filter((install) => install.application === null)).toEqual([]);
+    }
   });
 
   it('builds the render command line in the order Blender needs', async () => {

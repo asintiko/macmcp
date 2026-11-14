@@ -57,6 +57,14 @@ function executableOf(candidate: string): { path: string; bundle?: string } {
   return inBundle?.[1] ? { path: candidate, bundle: inBundle[1] } : { path: candidate };
 }
 
+/** Whether `file` is a small launcher script (as Homebrew installs) for an application already found. */
+async function isLauncherFor(file: string, found: { bundle?: string }[]): Promise<boolean> {
+  const info = await stat(file).catch(() => undefined);
+  if (!info?.isFile() || info.size > 4096) return false;
+  const text = await readFile(file, 'utf8').catch(() => '');
+  return text.startsWith('#!') && found.some((entry) => entry.bundle !== undefined && text.includes(entry.bundle));
+}
+
 /** Places where Blender is usually installed, most specific first. */
 async function candidates(runtime: Runtime): Promise<{ path: string; bundle?: string }[]> {
   const found: { path: string; bundle?: string }[] = [];
@@ -72,7 +80,7 @@ async function candidates(runtime: Runtime): Promise<{ path: string; bundle?: st
     }
   }
   const onPath = await which('blender', runtime.env);
-  if (onPath) found.push(executableOf(onPath));
+  if (onPath && !(await isLauncherFor(onPath, found))) found.push(executableOf(onPath));
   if (runtime.platform !== 'darwin') {
     for (const file of ['/usr/bin/blender', '/usr/local/bin/blender', '/snap/bin/blender', '/opt/blender/blender']) found.push({ path: file });
   }
