@@ -2,9 +2,9 @@ import { randomBytes } from 'node:crypto';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { ToolError } from '../core/errors.js';
-import { runProgram, type RunResult } from '../core/exec.js';
+import { runProgram, type RunResult, sleep } from '../core/exec.js';
 import type { Rect } from './geometry.js';
-import { DesktopHelper, type HelperCommand, SCREEN_RECORDING_HINT } from './helper.js';
+import { DesktopHelper, type HelperCommand } from './helper.js';
 
 export interface CaptureOptions {
   /** 1-based display index for a whole-display capture (default: the main display). */
@@ -52,6 +52,9 @@ export interface DesktopDriver {
 }
 
 const SCREENCAPTURE = '/usr/sbin/screencapture';
+/** How often a capture of the screen is tried before giving up, and the pause in between. */
+const CAPTURE_ATTEMPTS = 3;
+const CAPTURE_RETRY_MS = 400;
 const SIPS = '/usr/bin/sips';
 const OSASCRIPT = '/usr/bin/osascript';
 const OPEN = '/usr/bin/open';
@@ -59,10 +62,13 @@ const OPEN = '/usr/bin/open';
 export class MacDesktopDriver implements DesktopDriver {
   readonly helper: DesktopHelper;
   private readonly tmpDir: string;
+  private readonly screencapture: string;
 
-  constructor(options: { stateDir: string; helper?: DesktopHelper }) {
+  /** `screencapture` replaces the system tool (tests). */
+  constructor(options: { stateDir: string; helper?: DesktopHelper; screencapture?: string }) {
     this.helper = options.helper ?? new DesktopHelper({ stateDir: options.stateDir });
     this.tmpDir = path.join(options.stateDir, 'tmp');
+    this.screencapture = options.screencapture ?? SCREENCAPTURE;
   }
 
   async prepare(onSlow?: () => void): Promise<void> {
@@ -79,7 +85,6 @@ export class MacDesktopDriver implements DesktopDriver {
   }
 
   async capture(options: CaptureOptions): Promise<Buffer> {
-    const file = await this.scratch('png');
     const args = ['-x', '-t', 'png'];
     if (options.cursor) args.push('-C');
     if (options.windowId !== undefined) {
@@ -90,29 +95,37 @@ export class MacDesktopDriver implements DesktopDriver {
     } else {
       args.push('-D', String(options.display ?? 1));
     }
-    args.push(file);
-    try {
-      const result = await runProgram(SCREENCAPTURE, args, { timeoutMs: 30_000 });
-      const data = await readFile(file).catch(() => undefined);
-      if (result.code !== 0 || !data || data.length === 0) {
-        const detail = (result.stderr || result.stdout).trim();
-        if (options.windowId !== undefined) {
-          throw new ToolError(
-            'FAILED',
-            `Window ${options.windowId} could not be captured${detail ? ` (${detail})` : ''}.`,
-            'It may be closed, minimised or on another Space: check list_windows, or take a normal screenshot.',
-          );
-        }
-        throw new ToolError(
-          'MACOS_PERMISSION_REQUIRED',
-          `The screen could not be captured${detail ? ` (${detail})` : ''}. macOS has most likely not granted Screen Recording access.`,
-          SCREEN_RECORDING_HINT,
-        );
+    // macOS now and then refuses a capture of the screen for a moment ("could not create image
+    // from display") while an application starts or the displays, Spaces or full-screen windows
+    // change. A window that cannot be captured, on the other hand, is usually simply gone.
+    const attempts = options.windowId === undefined ? CAPTURE_ATTEMPTS : 1;
+    let detail = '';
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      const file = await this.scratch('png');
+      try {
+        const result = await runProgram(this.screencapture, [...args, file], { timeoutMs: 30_000 });
+        const data = await readFile(file).catch(() => undefined);
+        if (result.code === 0 && data && data.length > 0) return data;
+        detail = (result.stderr || result.stdout).trim();
+      } finally {
+        await rm(file, { force: true }).catch(() => undefined);
       }
-      return data;
-    } finally {
-      await rm(file, { force: true }).catch(() => undefined);
+      if (attempt < attempts) await sleep(CAPTURE_RETRY_MS);
     }
+    if (options.windowId !== undefined) {
+      throw new ToolError(
+        'FAILED',
+        `Window ${options.windowId} could not be captured${detail ? ` (${detail})` : ''}.`,
+        'It may be closed, minimised or on another Space: check list_windows, or take a normal screenshot.',
+      );
+    }
+    // Whether Screen Recording access is there at all is checked before a capture is attempted
+    // (Desktop.screenshot), so this is something else.
+    throw new ToolError(
+      'FAILED',
+      `The screen could not be captured${detail ? ` (${detail})` : ''}.`,
+      'macOS refuses this for a moment while displays, Spaces or full-screen windows change: wait a second and try again. If it keeps failing, the display may be asleep or locked.',
+    );
   }
 
   async encode(png: Buffer, options: EncodeOptions): Promise<Buffer> {

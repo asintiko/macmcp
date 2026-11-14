@@ -15,6 +15,7 @@ import {
   screenGeometry,
   shotFromPoint,
 } from '../../src/desktop/geometry.js';
+import { MacDesktopDriver } from '../../src/desktop/driver.js';
 import { DesktopHelper, HelperFailure } from '../../src/desktop/helper.js';
 import { parseKeyCombo, parseKeySequence, parseModifiers } from '../../src/desktop/keys.js';
 
@@ -270,5 +271,75 @@ chmod +x "$out"
     const names = (await readdir(nativePath('helper'))).filter((name) => name.endsWith('.swift')).sort();
     expect(names).toEqual(['Accessibility.swift', 'Apps.swift', 'Input.swift', 'Support.swift', 'main.swift']);
     await expect(new DesktopHelper({ stateDir }).binaryPath()).resolves.toMatch(/mcpclaude-helper-[0-9a-f]{16}$/);
+  });
+});
+
+describe('screen capture with the macOS tool', () => {
+  let root: string;
+  let stub: string;
+
+  beforeEach(async () => {
+    root = await mkdtemp(path.join(tmpdir(), 'mcpclaude-capture-'));
+    stub = path.join(root, 'screencapture');
+    // Stands in for /usr/sbin/screencapture: fails as often as `failures` says, then writes a
+    // file to the path given as the last argument. Every run is recorded in `runs`.
+    await writeFile(
+      stub,
+      `#!/bin/sh
+here="$(dirname "$0")"
+echo "$*" >> "$here/runs"
+left="$(cat "$here/failures" 2>/dev/null || echo 0)"
+if [ "$left" -gt 0 ]; then
+  echo $((left - 1)) > "$here/failures"
+  echo "could not create image from display" >&2
+  exit 1
+fi
+for last; do :; done
+printf 'PNGDATA' > "$last"
+`,
+    );
+    await chmod(stub, 0o755);
+  });
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+
+  const runs = async (): Promise<string[]> => (await readFile(path.join(root, 'runs'), 'utf8')).trim().split('\n');
+  const driver = (): MacDesktopDriver => new MacDesktopDriver({ stateDir: path.join(root, 'state'), screencapture: stub });
+
+  it('passes the display, region or window to capture', async () => {
+    const mac = driver();
+    expect((await mac.capture({ display: 2, cursor: true })).toString()).toBe('PNGDATA');
+    await mac.capture({ region: { x: 10.4, y: 20.6, width: 300, height: 0.2 } });
+    await mac.capture({ windowId: 77 });
+    const seen = (await runs()).map((line) => line.replace(/ \S+$/, ''));
+    expect(seen).toEqual(['-x -t png -C -D 2', '-x -t png -R10,21,300,1', '-x -t png -o -l 77']);
+    // Nothing is left behind in the scratch directory.
+    expect(await readdir(path.join(root, 'state', 'tmp'))).toEqual([]);
+  });
+
+  it('tries again when macOS refuses a capture for a moment', async () => {
+    await writeFile(path.join(root, 'failures'), '2');
+    expect((await driver().capture({ display: 1 })).toString()).toBe('PNGDATA');
+    expect(await runs()).toHaveLength(3);
+  });
+
+  it('gives up after three attempts without blaming a permission', async () => {
+    await writeFile(path.join(root, 'failures'), '9');
+    const failure = await driver().capture({ display: 1 }).then(
+      () => undefined,
+      (err: unknown) => err as ToolError,
+    );
+    expect(failure).toBeInstanceOf(ToolError);
+    expect(failure?.code).toBe('FAILED');
+    expect(failure?.message).toBe('The screen could not be captured (could not create image from display).');
+    expect(failure?.hint).toContain('wait a second and try again');
+    expect(await runs()).toHaveLength(3);
+  });
+
+  it('does not retry a window that cannot be captured', async () => {
+    await writeFile(path.join(root, 'failures'), '9');
+    await expect(driver().capture({ windowId: 5 })).rejects.toMatchObject({ code: 'FAILED', message: 'Window 5 could not be captured (could not create image from display).' });
+    expect(await runs()).toHaveLength(1);
   });
 });
