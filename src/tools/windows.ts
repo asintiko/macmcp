@@ -171,7 +171,7 @@ export function windowTools(): AnyTool[] {
     group: 'windows',
     access: 'full',
     desktop: true,
-    description: 'Change the state of a window: "minimized" sends it to the Dock, "restored" brings a minimised window back, "fullscreen" puts it in its own full-screen Space and "windowed" leaves full screen again.',
+    description: 'Change the state of a window: "minimized" sends it to the Dock, "restored" brings a minimised window back, "fullscreen" puts it in its own full-screen Space and "windowed" leaves full screen again (macOS decides where the window lands then: read its position from list_windows before clicking in it).',
     input: z.object({
       window_id: windowId,
       state: z.enum(['minimized', 'restored', 'fullscreen', 'windowed']).describe('State to put the window in.'),

@@ -557,7 +557,15 @@ describe.runIf(process.platform === 'darwin')('computer use on a real Mac', () =
       },
       30_000,
     );
-    expect(back).toMatchObject({ x: before.x, y: before.y, width: before.width, height: before.height });
+    // macOS chooses where the window lands (where it was last dragged to, not where it was last
+    // put); the size is the one it had. From there it can be placed as before.
+    console.log(`[computer-use] back from full screen at (${back.x}, ${back.y}) ${back.width}×${back.height}, before (${before.x}, ${before.y})`);
+    expect(back).toMatchObject({ width: before.width, height: before.height, minimized: false });
+    await act('set_window_bounds', { window_id: windowId, x: 80, y: 100, width: 600, height: 400 });
+    await eventually('the window to be back in place', async () => {
+      const w = await maybeWindow();
+      return w?.x === 80 && w.y === 100 && w.width === 600 && w.height === 400;
+    });
     await act('focus_window', { window_id: windowId });
   }, 120_000);
 
