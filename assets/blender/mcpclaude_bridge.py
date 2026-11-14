@@ -15,7 +15,7 @@ Two modes, chosen by the arguments after ``--``:
     only), and executes each request on Blender's main thread from an application timer.
 
 Wire format in serve mode: one JSON object per line in each direction, one request per
-connection: ``{"token": "...", "op": "exec", "code": "...", "args": [...]}`` or
+connection: ``{"token": "...", "op": "exec", "code": "...", "args": [...], "undo": true}`` or
 ``{"token": "...", "op": "ping"}``.
 """
 
@@ -91,7 +91,7 @@ def _user_traceback(error):
 def _interface_context():
     """A window and 3D viewport for operators that need one; timers run without any."""
     manager = getattr(bpy.context, "window_manager", None)
-    if bpy.app.background or manager is None or bpy.context.window is not None:
+    if bpy.app.background or manager is None or bpy.context.area is not None:
         return {}
     for window in manager.windows:
         override = {"window": window, "screen": window.screen}
@@ -272,6 +272,15 @@ class Bridge:
         finally:
             self.busy = False
             self.served += 1
+        if request.get("undo", True):
+            # One undo step per request: the user can take the change back with Ctrl+Z, and
+            # Blender knows the file has unsaved changes.
+            try:
+                override = _interface_context()
+                with bpy.context.temp_override(**override) if override else contextlib.nullcontext():
+                    bpy.ops.ed.undo_push(message="mcpclaude: Python")
+            except Exception:  # noqa: BLE001
+                pass
         self._send(connection, response)
         return 0.0
 

@@ -24,6 +24,8 @@ user allowed it — see the screen and control mouse, keyboard and applications.
 starting multi-step work:
 
 - `computer-use` — screenshots, mouse, keyboard, applications, windows, menus and dialogs.
+- `blender` — Python scripting, headless renders and live sessions in Blender.
+- `after-effects` — ExtendScript, menu commands and rendering in Adobe After Effects.
 
 ## Errors
 

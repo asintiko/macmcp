@@ -29,7 +29,15 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run build
-      - run: npm test
+      # One Linux job also has a real Blender, for the headless and (under Xvfb) live-session tests.
+      - name: Install Blender
+        if: matrix.node == 24
+        run: |
+          sudo snap install blender --classic
+          blender --version | head -1
+      - name: Test
+        run: |
+          if [ "${{ matrix.node }}" = "24" ]; then xvfb-run -a npm test; else npm test; fi
 
   # macOS-only behaviour (Seatbelt sandbox, screen capture, input injection, Accessibility)
   # can only be exercised on a real Mac, so the same suite runs on hosted macOS runners.
@@ -58,6 +66,12 @@ jobs:
       # compiler diagnostics appear in full.
       - name: Compile the desktop helper
         run: swiftc -swift-version 5 -module-name mcpclaude_helper -o "$RUNNER_TEMP/mcpclaude-helper" native/helper/*.swift
+      # A real Blender, for the headless and live-session tests of the Blender tools.
+      - name: Install Blender
+        run: |
+          brew install --cask blender
+          xattr -dr com.apple.quarantine /Applications/Blender.app || true
+          /Applications/Blender.app/Contents/MacOS/Blender --version | head -1
       - run: npm test
         env:
           # Screenshots of every Computer Use step, kept as a build artifact.

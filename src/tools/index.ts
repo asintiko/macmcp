@@ -1,4 +1,6 @@
+import { afterEffectsTools } from './after-effects.js';
 import { appTools } from './apps.js';
+import { blenderTools } from './blender.js';
 import { computerTools } from './computer.js';
 import { fileTools } from './files.js';
 import { metaTools } from './meta.js';
@@ -29,6 +31,8 @@ export function createToolRegistry(): ToolRegistry {
     ...computerTools(),
     ...uiTools(),
     ...scriptingTools(),
+    ...afterEffectsTools(),
+    ...blenderTools(),
   ];
   holder.registry = new ToolRegistry(tools);
   return holder.registry;

@@ -1,7 +1,8 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { readImageInfo } from '../../src/core/image.js';
+import { realBlender } from '../helpers/blender.js';
 import { type CallOutcome, createHarness, type Harness } from '../helpers/harness.js';
 import { decodePng } from '../helpers/png.js';
 
@@ -474,4 +475,73 @@ describe.runIf(process.platform === 'darwin')('computer use on a real Mac', () =
     await eventually('TextEdit to be gone', async () => !((await call('list_applications')).data?.['running'] as { name: string }[]).some((app) => app.name === 'TextEdit'));
     expect((await call('quit_application', { application: 'TextEdit', screenshot: false })).text).toBe('Error [NOT_FOUND]: No running application named "TextEdit"');
   }, 90_000);
+
+  it('reports After Effects honestly when it is not there', async () => {
+    const info = await call('after_effects_info');
+    expect(info.isError, info.text).toBe(false);
+    if ((info.data?.['installed'] as unknown[]).length === 0) {
+      expect(info.text).toContain('After Effects is not installed on this Mac');
+      expect((await call('after_effects_render', { project: note })).text).toContain('Error [DEPENDENCY_MISSING]: Adobe After Effects is not installed on this Mac');
+    }
+    if ((info.data?.['running'] as unknown[]).length === 0) {
+      expect(info.text).toContain('Running: no.');
+      expect((await call('after_effects_run_script', { code: 'app.version' })).text).toContain('Error [FAILED]: After Effects is not running.');
+    }
+  });
+
+  // A real Blender with its window, driven through the bridge and seen through Computer Use.
+  describe.runIf(realBlender())('with Blender', () => {
+    let blenderPid = 0;
+    afterAll(() => {
+      if (blenderPid > 0) {
+        try {
+          process.kill(blenderPid, 'SIGKILL');
+        } catch {
+          // Already gone.
+        }
+      }
+    });
+
+    it('starts a live Blender session whose window is on screen', async () => {
+      const launched = await call('blender_launch', { factory_settings: true, wait_seconds: 180 });
+      expect(launched.isError, launched.text).toBe(false);
+      expect(launched.text).toMatch(/^Blender \d+\.\d+(\.\d+)?( \w+)* is running \(pid \d+\) and connected\./);
+      blenderPid = launched.data?.['pid'] as number;
+
+      const window = await eventually('the Blender window', async () => ((await call('list_windows', { pid: blenderPid })).data?.['windows'] as WindowInfo[] | undefined)?.find((w) => w.width > 200), 60_000);
+      expect(window.application).toMatch(/blender/i);
+      const info = await call('blender_info');
+      expect(info.text).toMatch(/Live session: Blender [\d.]+( \w+)* \(pid \d+\) is running\./);
+      expect(info.data?.['live_session']).toMatchObject({ pid: blenderPid, objects: 3, scene: 'Scene' });
+    }, 300_000);
+
+    it('runs Python inside the session and sees the result on screen', async () => {
+      const added = await call('blender_run_python', { code: 'bpy.ops.mesh.primitive_monkey_add(location=(0, 0, 2))\nbpy.context.object.name = "Suzanne"\n[bpy.context.area.type, sorted(o.name for o in bpy.data.objects)]' });
+      expect(added.isError, added.text).toBe(false);
+      expect(added.data?.['result']).toEqual(['VIEW_3D', ['Camera', 'Cube', 'Light', 'Suzanne']]);
+
+      await act('activate_application', { pid: blenderPid });
+      const shot = await eventually('Blender to be frontmost', async () => {
+        const taken = await call('screenshot');
+        return /blender/i.test(String(taken.data?.['frontmost_application'])) ? taken : undefined;
+      }, 30_000);
+      expect(shot.images).toHaveLength(1);
+
+      const file = path.join(h.projectDir, 'live.blend');
+      const saved = await call('blender_run_python', { mode: 'live', code: `bpy.ops.wm.save_as_mainfile(filepath=${JSON.stringify(file)})\nbpy.data.filepath` });
+      expect(saved.data?.['result']).toBe(file);
+      // The saved scene renders headless while the session stays open.
+      const render = await call('blender_render', { blend_file: file, frame: 1, engine: 'CYCLES', samples: 1, resolution_x: 64, resolution_y: 48, resolution_percentage: 100, wait_seconds: 200 });
+      expect(render.isError, render.text).toBe(false);
+      expect(readImageInfo(await readFile((render.data?.['files'] as string[])[0] as string))).toEqual({ format: 'png', width: 64, height: 48 });
+    }, 400_000);
+
+    it('ends the session when Blender quits', async () => {
+      const quit = await act('quit_application', { pid: blenderPid, force: true, wait_seconds: 20 });
+      expect(quit.text).toMatch(/has quit\.$/);
+      blenderPid = 0;
+      await eventually('the session to be gone', async () => (await call('blender_info')).text.includes('Live session: none.'));
+      expect((await call('blender_run_python', { mode: 'live', code: '1' })).text).toContain('Error [FAILED]: No live Blender session is running.');
+    }, 60_000);
+  });
 });
