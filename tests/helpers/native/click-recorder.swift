@@ -22,10 +22,13 @@ else {
 
 let logPath = arguments[1]
 FileManager.default.createFile(atPath: logPath, contents: nil)
-guard let logHandle = FileHandle(forWritingAtPath: logPath) else {
-  FileHandle.standardError.write(Data("cannot write \(logPath)\n".utf8))
-  exit(3)
-}
+let logHandle: FileHandle = {
+  guard let handle = FileHandle(forWritingAtPath: logPath) else {
+    FileHandle.standardError.write(Data("cannot write \(logPath)\n".utf8))
+    exit(3)
+  }
+  return handle
+}()
 
 func writeEntry(_ entry: [String: Any]) {
   guard let data = try? JSONSerialization.data(withJSONObject: entry, options: [.sortedKeys]) else { return }
@@ -72,8 +75,9 @@ final class RecorderView: NSView {
     writeEntry(["kind": "scroll", "dx": Double(event.scrollingDeltaX), "dy": Double(event.scrollingDeltaY)])
   }
 
+  // A colour no desktop picture has, so that a screenshot can be checked for the window.
   override func draw(_ dirtyRect: NSRect) {
-    NSColor.systemTeal.setFill()
+    NSColor(srgbRed: 1.0, green: 0.0, blue: 1.0, alpha: 1.0).setFill()
     bounds.fill()
   }
 }

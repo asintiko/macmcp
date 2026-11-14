@@ -76,6 +76,12 @@ jobs:
         env:
           # Screenshots of every Computer Use step, kept as a build artifact.
           MCPCLAUDE_TEST_ARTIFACTS: ${{ runner.temp }}/computer-use
+      # Last, because it cannot be undone on this machine: withdraw Accessibility and Screen
+      # Recording from every application and check what agents and users are told then.
+      - name: Desktop control without the privacy permissions
+        run: npx vitest run tests/macos/no-permissions.test.ts
+        env:
+          MCPCLAUDE_TEST_REVOKE_PERMISSIONS: '1'
       - name: Keep the Computer Use screenshots
         if: always()
         uses: actions/upload-artifact@v7

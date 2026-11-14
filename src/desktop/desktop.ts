@@ -17,7 +17,7 @@ import {
   shotFromPoint,
   type Size,
 } from './geometry.js';
-import type { HelperCommand } from './helper.js';
+import { type HelperCommand, SCREEN_RECORDING_HINT } from './helper.js';
 
 export interface ScreenshotRequest {
   /** 1-based display index (default: the main display). */
@@ -80,6 +80,8 @@ export class Desktop {
   readonly maxDimension: number;
   private readonly jpegQuality: number;
   private displayCache: { at: number; displays: DisplayInfo[] } | undefined;
+  /** Remembered once macOS has confirmed Screen Recording access, so that later screenshots need not ask again. */
+  private screenRecordingGranted = false;
   private tail: Promise<unknown> = Promise.resolve();
 
   constructor(driver: DesktopDriver, options: DesktopOptions = {}) {
@@ -114,6 +116,11 @@ export class Desktop {
     const now = Date.now();
     if (!fresh && this.displayCache && now - this.displayCache.at < 3000) return this.displayCache.displays;
     const { displays: raw } = await this.call<{ displays: RawDisplay[] }>('displays');
+    return this.rememberDisplays(raw);
+  }
+
+  private rememberDisplays(raw: RawDisplay[]): DisplayInfo[] {
+    const now = Date.now();
     const displays = raw.map((d) => ({
       id: d.id,
       index: d.index,
@@ -159,8 +166,24 @@ export class Desktop {
     return this.fromPoint(await this.call<Point>('cursor'));
   }
 
+  /**
+   * Refuse to capture the screen while macOS withholds Screen Recording access. `screencapture`
+   * itself is no judge of that: on macOS 15 it succeeds without the permission and returns the
+   * desktop picture with every window missing, which an agent would take for an empty screen.
+   * Asked together with the display list, so it costs no extra helper run.
+   */
+  private async displaysForCapture(): Promise<DisplayInfo[]> {
+    if (this.screenRecordingGranted) return this.displays(true);
+    const [listed, permissions] = (await this.driver.run([{ command: 'displays' }, { command: 'permissions', params: { prompt: false } }])) as [{ displays: RawDisplay[] }, Permissions];
+    if (!permissions.screen_recording) {
+      throw new ToolError('MACOS_PERMISSION_REQUIRED', 'macOS has not granted Screen Recording access to the application that runs mcpclaude, so the screen cannot be captured.', SCREEN_RECORDING_HINT);
+    }
+    this.screenRecordingGranted = true;
+    return this.rememberDisplays(listed.displays);
+  }
+
   async screenshot(request: ScreenshotRequest = {}): Promise<Screenshot> {
-    const geometry = await this.geometry(request.display, true);
+    const geometry = screenGeometry(pickDisplay(await this.displaysForCapture(), request.display), this.maxDimension);
     const format = request.format ?? 'jpeg';
     const cursor = request.cursor ?? true;
     const displayIndex = geometry.display.index;

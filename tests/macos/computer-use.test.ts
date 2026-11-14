@@ -4,7 +4,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { readImageInfo } from '../../src/core/image.js';
 import { realBlender } from '../helpers/blender.js';
 import { type CallOutcome, createHarness, type Harness } from '../helpers/harness.js';
-import { buildClickRecorder, ClickRecorder } from '../helpers/native.js';
+import { buildClickRecorder, buildVirtualDisplay, ClickRecorder, VirtualDisplay } from '../helpers/native.js';
 import { decodePng } from '../helpers/png.js';
 
 /**
@@ -667,6 +667,182 @@ describe.runIf(process.platform === 'darwin')('computer use on a real Mac', () =
       blenderPid = 0;
       await eventually('the session to be gone', async () => (await call('blender_info')).text.includes('Live session: none.'));
       expect((await call('blender_run_python', { mode: 'live', code: '1' })).text).toContain('Error [FAILED]: No live Blender session is running.');
+    }, 60_000);
+  });
+
+  // A second, Retina display, added to the Mac for the duration of these steps. macOS gives the
+  // main display a larger mode while it is there, so the main display is scaled as well: one
+  // screenshot pixel is no longer one point on either of them.
+  describe('with a Retina display next to the main one', () => {
+    interface DisplayData {
+      index: number;
+      main: boolean;
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      pixelWidth: number;
+      pixelHeight: number;
+      scale: number;
+    }
+    let virtual: VirtualDisplay | undefined;
+    let second: DisplayData;
+    let main: DisplayData;
+    const recorders: ClickRecorder[] = [];
+
+    const displays = async (): Promise<DisplayData[]> => (await h.runtime.desktop?.displays(true)) ?? [];
+    const recorderWindow = async (recorder: ClickRecorder): Promise<WindowInfo & { display: number }> =>
+      eventually('the recorder window', async () => ((await call('list_windows', { pid: recorder.pid })).data?.['windows'] as (WindowInfo & { display: number })[] | undefined)?.find((w) => w.width > 100));
+    const isMagenta = ([r, g, b]: number[]): boolean => (r ?? 0) > 180 && (g ?? 255) < 100 && (b ?? 0) > 180;
+
+    beforeAll(async () => {
+      const tool = await buildVirtualDisplay(path.join(h.root, 'virtual-display'));
+      virtual = await VirtualDisplay.start(tool, { width: 1280, height: 800, hiDPI: true });
+      const found = await eventually('macOS to list the new display', async () => {
+        const all = await displays();
+        return all.length === 2 ? all : undefined;
+      });
+      main = found.find((d) => d.main) as DisplayData;
+      second = found.find((d) => !d.main) as DisplayData;
+      console.log(`[computer-use] displays ${JSON.stringify(found)}`);
+    }, 300_000);
+
+    afterAll(async () => {
+      for (const recorder of recorders) await recorder.stop();
+      await virtual?.stop();
+      await eventually('the display to be gone', async () => (await displays()).length === 1).catch(() => undefined);
+    });
+
+    it('reports two displays, the second with twice the pixels', async () => {
+      expect(main).toMatchObject({ index: 1, x: 0, y: 0 });
+      expect(second).toMatchObject({ index: 2, width: 1280, height: 800, pixelWidth: 2560, pixelHeight: 1600, scale: 2 });
+
+      const first = await call('screenshot', { format: 'png' });
+      expect(first.isError, first.text).toBe(false);
+      const firstSize = first.data?.['screen'] as { width: number; height: number };
+      expect(first.data).toMatchObject({ display: 1 });
+      expect(Math.max(firstSize.width, firstSize.height)).toBeLessThanOrEqual(1280);
+      // The proportions of the display survive the scaling.
+      expect(Math.abs(firstSize.width / firstSize.height - main.width / main.height)).toBeLessThan(0.01);
+      expect(readImageInfo(Buffer.from(first.images[0]?.data ?? '', 'base64'))).toEqual({ format: 'png', ...firstSize });
+
+      // 2560×1600 pixels come back as the 1280×800 picture that coordinates refer to.
+      const other = await call('screenshot', { display: 2, format: 'png' });
+      expect(other.isError, other.text).toBe(false);
+      expect(other.data).toMatchObject({ display: 2, width: 1280, height: 800, screen: { width: 1280, height: 800 } });
+      expect(readImageInfo(Buffer.from(other.images[0]?.data ?? '', 'base64'))).toEqual({ format: 'png', width: 1280, height: 800 });
+      expect(other.text).toContain('Screenshot of display 2 (1280×800)');
+
+      // Enlarging a region shows the extra pixels of the Retina display.
+      const region = await call('screenshot', { display: 2, region: { x: 100, y: 100, width: 200, height: 125 }, format: 'png' });
+      expect(region.isError, region.text).toBe(false);
+      expect(region.data).toMatchObject({ display: 2, zoom: 2, width: 400, height: 250 });
+      expect(readImageInfo(Buffer.from(region.images[0]?.data ?? '', 'base64'))).toEqual({ format: 'png', width: 400, height: 250 });
+
+      expect((await call('screenshot', { display: 3 })).text).toContain('Error [INVALID_ARGUMENT]: There is no display 3: this Mac has 2 displays');
+    }, 60_000);
+
+    it('moves the pointer on each display in that display\'s screenshot coordinates', async () => {
+      for (const target of [{ x: 640, y: 400 }, { x: 37, y: 91 }, { x: 1200, y: 700 }]) {
+        await act('mouse_move', { ...target, display: 2 });
+        expect((await call('cursor_position')).data).toEqual({ display: 2, ...target });
+      }
+      for (const target of [{ x: 300, y: 200 }, { x: 51, y: 77 }]) {
+        await act('mouse_move', target);
+        expect((await call('cursor_position')).data).toEqual({ display: 1, ...target });
+      }
+      const shot = await call('screenshot', { display: 2 });
+      expect(shot.data?.['pointer']).toMatchObject({ display: 1 });
+    }, 60_000);
+
+    it('clicks where it aims on the Retina display, and the screenshot shows the same place', async () => {
+      // Content area at (300, 250) 400×240 of the second display, given to the application in global points.
+      const recorder = await ClickRecorder.start(recorderBinary, path.join(h.root, 'clicks-display-2.jsonl'), { x: second.x + 300, y: second.y + 250, width: 400, height: 240 });
+      recorders.push(recorder);
+      expect(recorder.scale).toBe(2);
+      const window = await recorderWindow(recorder);
+      expect(window.display).toBe(2);
+      // A point of this display is a screenshot pixel, so the window is where it was put.
+      expect(window).toMatchObject({ x: 300, width: 400 });
+      expect(window.y + window.height).toBe(490);
+
+      const centre = { x: 500, y: 370 };
+      await act('click', { ...centre, display: 2 });
+      await act('click', { ...centre, display: 2, button: 'right' });
+      await act('click', { ...centre, display: 2, button: 'middle' });
+      const events = await eventually('the clicks to arrive', async () => {
+        const seen = await recorder.events();
+        return seen.length >= 6 ? seen : undefined;
+      });
+      console.log(`[computer-use] recorded on display 2 ${JSON.stringify(events)}`);
+      expect(events.map((event) => `${event.kind} ${event.button}`)).toEqual(['down 0', 'up 0', 'down 1', 'up 1', 'down 2', 'up 2']);
+      for (const event of events) {
+        expect(Math.abs(event.x - (second.x + centre.x)), JSON.stringify(event)).toBeLessThanOrEqual(1);
+        expect(Math.abs(event.y - (second.y + centre.y)), JSON.stringify(event)).toBeLessThanOrEqual(1);
+      }
+
+      // The picture agrees: the window's colour is at those pixels and stops at its edges.
+      const shot = await call('screenshot', { display: 2, format: 'png', show_cursor: false });
+      const picture = decodePng(Buffer.from(shot.images[0]?.data ?? '', 'base64'));
+      expect(isMagenta(picture.pixel(centre.x, centre.y))).toBe(true);
+      expect(isMagenta(picture.pixel(305, 255))).toBe(true);
+      expect(isMagenta(picture.pixel(695, 485))).toBe(true);
+      expect(isMagenta(picture.pixel(294, 370))).toBe(false);
+      expect(isMagenta(picture.pixel(706, 370))).toBe(false);
+      expect(isMagenta(picture.pixel(500, 496))).toBe(false);
+
+      // Interface elements are located in the same coordinates.
+      const at = await call('get_ui_element_at', { ...centre, display: 2 });
+      expect(at.isError, at.text).toBe(false);
+      expect(at.text).toContain('mcpclaude click recorder');
+    }, 90_000);
+
+    it('clicks where it aims on the scaled main display', async () => {
+      const recorder = await ClickRecorder.start(recorderBinary, path.join(h.root, 'clicks-display-1.jsonl'), { x: Math.round(main.width * 0.4), y: Math.round(main.height * 0.4), width: 360, height: 240 });
+      recorders.push(recorder);
+      const window = await recorderWindow(recorder);
+      expect(window.display).toBe(1);
+      const screen = (await call('screenshot')).data?.['screen'] as { width: number; height: number };
+      const perPoint = screen.width / main.width;
+      console.log(`[computer-use] main display ${main.width}×${main.height} points → ${screen.width}×${screen.height} screenshot`);
+      // The window is reported in screenshot pixels: smaller numbers than its size in points.
+      expect(Math.abs(window.width - 360 * perPoint)).toBeLessThanOrEqual(1);
+      expect(Math.abs(window.x - recorder.content.x * perPoint)).toBeLessThanOrEqual(1);
+
+      const target = { x: Math.round((recorder.content.x + 180) * perPoint), y: Math.round((recorder.content.y + 120) * perPoint) };
+      await act('click', target);
+      await act('click', { ...target, button: 'right' });
+      const events = await eventually('the clicks to arrive', async () => {
+        const seen = await recorder.events();
+        return seen.length >= 4 ? seen : undefined;
+      });
+      expect(events.map((event) => `${event.kind} ${event.button}`)).toEqual(['down 0', 'up 0', 'down 1', 'up 1']);
+      // A screenshot pixel covers 1/perPoint points; the click lands inside the pixel that was named.
+      const tolerance = 1 / perPoint + 0.5;
+      for (const event of events) {
+        expect(Math.abs(event.x - (recorder.content.x + 180)), JSON.stringify(event)).toBeLessThanOrEqual(tolerance);
+        expect(Math.abs(event.y - (recorder.content.y + 120)), JSON.stringify(event)).toBeLessThanOrEqual(tolerance);
+      }
+      const shot = await call('screenshot', { format: 'png', show_cursor: false });
+      const picture = decodePng(Buffer.from(shot.images[0]?.data ?? '', 'base64'));
+      expect(isMagenta(picture.pixel(target.x, target.y))).toBe(true);
+    }, 90_000);
+
+    it('moves a window from one display to the other', async () => {
+      const recorder = recorders[0] as ClickRecorder;
+      const before = await recorderWindow(recorder);
+      const moved = await act('set_window_bounds', { window_id: before.window_id, x: 200, y: 150 });
+      expect(moved.text).toContain('is now at (200, 150)');
+      await eventually('the window on the main display', async () => {
+        const w = await recorderWindow(recorder);
+        return w.display === 1 && w.x === 200 && w.y === 150;
+      });
+      await act('set_window_bounds', { window_id: before.window_id, x: 640, y: 320, display: 2 });
+      const back = await eventually('the window back on the second display', async () => {
+        const w = await recorderWindow(recorder);
+        return w.display === 2 ? w : undefined;
+      });
+      expect(back).toMatchObject({ x: 640, y: 320, width: before.width, height: before.height });
     }, 60_000);
   });
 });

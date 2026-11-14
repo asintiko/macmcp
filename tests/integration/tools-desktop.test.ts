@@ -801,3 +801,41 @@ describe('desktop tools where they are not allowed', () => {
     }
   });
 });
+
+describe('desktop tools before macOS has granted Screen Recording', () => {
+  it('refuse to pass off a picture without windows as a screenshot, and work once access is there', async () => {
+    const mac = new FakeDesktopDriver([RETINA]);
+    let granted = false;
+    mac.handlers['permissions'] = () => ({ accessibility: true, screen_recording: granted });
+    const h = await createHarness({ mode: 'full', runtime: { desktop: mac } });
+    try {
+      // macOS 15 lets `screencapture` succeed without the permission; the picture then shows the desktop only.
+      const refused = await h.call('screenshot');
+      expect(refused.text).toBe(
+        [
+          'Error [MACOS_PERMISSION_REQUIRED]: macOS has not granted Screen Recording access to the application that runs mcpclaude, so the screen cannot be captured.',
+          'Hint: Ask the user to open System Settings → Privacy & Security → Screen & System Audio Recording, enable the application that runs mcpclaude (Terminal, iTerm, …) and restart mcpclaude. You cannot grant this yourself.',
+        ].join('\n'),
+      );
+      expect(mac.captures).toEqual([]);
+      // The question travels with the display list: one helper run, not two.
+      expect(mac.events).toEqual(['run:displays,permissions']);
+
+      // Input does not need this permission: the action happens and says why there is no picture.
+      const click = await h.call('click', { x: 5, y: 5 });
+      expect(click.isError).toBe(false);
+      expect(click.text).toMatch(/^Clicked at \(5, 5\)\.\nThe action was carried out, but no screenshot could be taken: macOS has not granted Screen Recording access/);
+      expect(mac.captures).toEqual([]);
+
+      granted = true;
+      mac.events.length = 0;
+      expect((await h.call('screenshot')).images).toHaveLength(1);
+      expect((await h.call('screenshot')).images).toHaveLength(1);
+      // Asked until the answer is yes, then never again.
+      expect(mac.events.filter((event) => event.includes('displays'))).toEqual(['run:displays,permissions', 'run:displays']);
+      expect(mac.captures).toHaveLength(2);
+    } finally {
+      await h.close();
+    }
+  });
+});
